@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.safeDrawing
@@ -31,6 +32,8 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowLeft
 import androidx.compose.material.icons.filled.ArrowRight
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Speed
@@ -424,10 +427,11 @@ fun ReaderScreen(
             )
             Text(
                 "${(progress * 100).roundToInt()}%",
-                modifier = Modifier.align(Alignment.End).padding(end = 12.dp, bottom = 6.dp),
+                modifier = Modifier.align(Alignment.End).padding(end = 12.dp, top = 2.dp),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            Spacer(Modifier.height(14.dp))
         }
 
         if (fullTextOpen) {
@@ -649,29 +653,68 @@ private fun PlaybackControls(
     onNextSentence: () -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().height(72.dp).padding(horizontal = 6.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(88.dp)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        TextButton(onClick = onPreviousSentence, enabled = canPreviousSentence) {
-            Text("‹ 문장")
+        IconButton(
+            onClick = onPreviousSentence,
+            enabled = canPreviousSentence,
+            modifier = Modifier.size(58.dp)
+        ) {
+            Icon(
+                Icons.Default.FastRewind,
+                "이전 문장",
+                modifier = Modifier.size(29.dp)
+            )
         }
-        IconButton(onClick = onPrevious, enabled = canPrevious) {
-            Icon(Icons.Default.ArrowLeft, "이전 토큰")
+        IconButton(
+            onClick = onPrevious,
+            enabled = canPrevious,
+            modifier = Modifier.size(58.dp)
+        ) {
+            Icon(
+                Icons.Default.ArrowLeft,
+                "이전 토큰",
+                modifier = Modifier.size(30.dp)
+            )
         }
-        Surface(shape = RoundedCornerShape(50), tonalElevation = 3.dp) {
-            IconButton(onClick = onPlayPause) {
+        Surface(shape = RoundedCornerShape(50), tonalElevation = 4.dp) {
+            IconButton(
+                onClick = onPlayPause,
+                modifier = Modifier.size(66.dp)
+            ) {
                 Icon(
                     if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    if (isPlaying) "일시정지" else "재생"
+                    if (isPlaying) "일시정지" else "재생",
+                    modifier = Modifier.size(34.dp)
                 )
             }
         }
-        IconButton(onClick = onNext, enabled = canNext) {
-            Icon(Icons.Default.ArrowRight, "다음 토큰")
+        IconButton(
+            onClick = onNext,
+            enabled = canNext,
+            modifier = Modifier.size(58.dp)
+        ) {
+            Icon(
+                Icons.Default.ArrowRight,
+                "다음 토큰",
+                modifier = Modifier.size(30.dp)
+            )
         }
-        TextButton(onClick = onNextSentence, enabled = canNextSentence) {
-            Text("문장 ›")
+        IconButton(
+            onClick = onNextSentence,
+            enabled = canNextSentence,
+            modifier = Modifier.size(58.dp)
+        ) {
+            Icon(
+                Icons.Default.FastForward,
+                "다음 문장",
+                modifier = Modifier.size(29.dp)
+            )
         }
     }
 }
