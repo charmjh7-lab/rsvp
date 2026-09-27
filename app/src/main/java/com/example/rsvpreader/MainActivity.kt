@@ -29,7 +29,7 @@ class MainActivity : ComponentActivity() {
 
 private sealed interface AppScreen {
     data object Library : AppScreen
-    data object Settings : AppScreen
+    data class Settings(val returnDocumentId: String? = null) : AppScreen
     data class Reader(val documentId: String) : AppScreen
 }
 
@@ -60,18 +60,21 @@ fun RSVPReaderApp() {
                     store = documentStore,
                     importer = importer,
                     onOpenDocument = { screen = AppScreen.Reader(it) },
-                    onSettings = { screen = AppScreen.Settings }
+                    onSettings = { screen = AppScreen.Settings() }
                 )
             }
-            AppScreen.Settings -> {
-                BackHandler { screen = AppScreen.Library }
+            is AppScreen.Settings -> {
+                val returnScreen: AppScreen = s.returnDocumentId
+                    ?.let { AppScreen.Reader(it) }
+                    ?: AppScreen.Library
+                BackHandler { screen = returnScreen }
                 SettingsScreen(
                     settings = settings,
                     onChange = {
                         settings = it
                         settingsStore.save(it)
                     },
-                    onBack = { screen = AppScreen.Library }
+                    onBack = { screen = returnScreen }
                 )
             }
             is AppScreen.Reader -> {
@@ -84,6 +87,7 @@ fun RSVPReaderApp() {
                         settings = it
                         settingsStore.save(it)
                     },
+                    onOpenSettings = { screen = AppScreen.Settings(s.documentId) },
                     onBack = { screen = AppScreen.Library }
                 )
             }

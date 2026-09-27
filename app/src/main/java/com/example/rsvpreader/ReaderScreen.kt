@@ -19,6 +19,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
@@ -32,6 +35,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Subject
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
@@ -90,6 +94,7 @@ fun ReaderScreen(
     store: DocumentStore,
     settings: AppSettings,
     onSettingsChange: (AppSettings) -> Unit,
+    onOpenSettings: () -> Unit,
     onBack: () -> Unit
 ) {
     var document by remember(documentId) { mutableStateOf(store.getDocument(documentId)) }
@@ -99,7 +104,7 @@ fun ReaderScreen(
     var isPlaying by remember { mutableStateOf(false) }
     var speedDialog by remember { mutableStateOf(false) }
     var fullTextOpen by remember { mutableStateOf(false) }
-    var ttsMode by remember(documentId) { mutableStateOf(false) }
+    var ttsMode by remember(documentId) { mutableStateOf(settings.lastTtsMode) }
     var ttsReady by remember(documentId) { mutableStateOf(false) }
     var ttsNotice by remember(documentId) { mutableStateOf<String?>(null) }
     val appContext = LocalContext.current.applicationContext
@@ -242,6 +247,24 @@ fun ReaderScreen(
         }
     }
 
+    fun togglePlayback() {
+        if (isPlaying) {
+            isPlaying = false
+            ttsController.stop()
+        } else if (ttsMode) {
+            if (!ttsReady) {
+                ttsNotice = "TTS를 준비하는 중이거나 사용할 수 없습니다."
+            } else if (startTtsAt(currentIndex)) {
+                ttsNotice = null
+                isPlaying = true
+            } else {
+                ttsNotice = "현재 위치에서 TTS를 시작하지 못했습니다."
+            }
+        } else {
+            isPlaying = true
+        }
+    }
+
     LaunchedEffect(currentIndex) {
         store.updatePosition(documentId, data, currentIndex)
     }
@@ -280,7 +303,9 @@ fun ReaderScreen(
                         isPlaying = false
                         ttsController.stop()
                         ttsNotice = null
-                        ttsMode = !ttsMode
+                        val nextMode = !ttsMode
+                        ttsMode = nextMode
+                        onSettingsChange(settings.copy(lastTtsMode = nextMode))
                     }) {
                         Icon(
                             if (ttsMode) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
@@ -317,6 +342,26 @@ fun ReaderScreen(
                 )
             }
 
+            if (settings.rsvpAtTop) {
+                RSVPControls(
+                    token = currentToken,
+                    settings = settings,
+                    isPlaying = isPlaying,
+                    canPrevious = currentIndex > 0,
+                    canNext = currentIndex < data.tokens.lastIndex,
+                    onPrevious = { moveTo(currentIndex - 1) },
+                    onPlayPause = { togglePlayback() },
+                    onNext = { moveTo(currentIndex + 1) }
+                )
+                Text(
+                    "${(progress * 100).roundToInt()}%",
+                    modifier = Modifier.align(Alignment.End).padding(end = 12.dp, bottom = 6.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                HorizontalDivider()
+            }
+
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 ContextWindow(
                     data = data,
@@ -330,39 +375,25 @@ fun ReaderScreen(
                 )
             }
 
-            HorizontalDivider()
-            RSVPControls(
-                token = currentToken,
-                settings = settings,
-                isPlaying = isPlaying,
-                canPrevious = currentIndex > 0,
-                canNext = currentIndex < data.tokens.lastIndex,
-                onPrevious = { moveTo(currentIndex - 1) },
-                onPlayPause = {
-                    if (isPlaying) {
-                        isPlaying = false
-                        ttsController.stop()
-                    } else if (ttsMode) {
-                        if (!ttsReady) {
-                            ttsNotice = "TTS를 준비하는 중이거나 사용할 수 없습니다."
-                        } else if (startTtsAt(currentIndex)) {
-                            ttsNotice = null
-                            isPlaying = true
-                        } else {
-                            ttsNotice = "현재 위치에서 TTS를 시작하지 못했습니다."
-                        }
-                    } else {
-                        isPlaying = true
-                    }
-                },
-                onNext = { moveTo(currentIndex + 1) }
-            )
-            Text(
-                "${(progress * 100).roundToInt()}%",
-                modifier = Modifier.align(Alignment.End).padding(end = 12.dp, bottom = 6.dp),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            if (!settings.rsvpAtTop) {
+                HorizontalDivider()
+                RSVPControls(
+                    token = currentToken,
+                    settings = settings,
+                    isPlaying = isPlaying,
+                    canPrevious = currentIndex > 0,
+                    canNext = currentIndex < data.tokens.lastIndex,
+                    onPrevious = { moveTo(currentIndex - 1) },
+                    onPlayPause = { togglePlayback() },
+                    onNext = { moveTo(currentIndex + 1) }
+                )
+                Text(
+                    "${(progress * 100).roundToInt()}%",
+                    modifier = Modifier.align(Alignment.End).padding(end = 12.dp, bottom = 6.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
 
         AnimatedVisibility(
@@ -376,6 +407,13 @@ fun ReaderScreen(
                 currentSentenceIndex = currentSentenceIndex,
                 fontSize = settings.contextFontSp,
                 onClose = { fullTextOpen = false },
+                onSettings = {
+                    isPlaying = false
+                    ttsController.stop()
+                    store.updatePosition(documentId, data, currentIndex, sync = true)
+                    fullTextOpen = false
+                    onOpenSettings()
+                },
                 onSentenceClick = { sentenceIndex ->
                     val sentence = data.sentences[sentenceIndex]
                     ttsController.stop()
@@ -383,7 +421,10 @@ fun ReaderScreen(
                     isPlaying = false
                     fullTextOpen = false
                 },
-                modifier = Modifier.width(maxWidth * 0.86f).fillMaxHeight()
+                modifier = Modifier
+                    .width(maxWidth * 0.86f)
+                    .fillMaxHeight()
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
             )
         }
     }
@@ -579,6 +620,7 @@ private fun FullTextPanel(
     currentSentenceIndex: Int,
     fontSize: Float,
     onClose: () -> Unit,
+    onSettings: () -> Unit,
     onSentenceClick: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -593,6 +635,7 @@ private fun FullTextPanel(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("전체 글", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "설정") }
                 IconButton(onClick = onClose) { Icon(Icons.Default.Close, "닫기") }
             }
             HorizontalDivider()

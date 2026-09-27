@@ -223,6 +223,18 @@ fun SettingsScreen(settings: AppSettings, onChange: (AppSettings) -> Unit, onBac
             HorizontalDivider()
             Spacer(Modifier.height(20.dp))
             SectionTitle("화면")
+            SettingPicker(
+                label = "RSVP 영역 위치",
+                selectedLabel = if (settings.rsvpAtTop) "상단" else "하단",
+                choices = listOf(
+                    SettingChoice("top", "상단"),
+                    SettingChoice("bottom", "하단")
+                ),
+                onSelect = { position ->
+                    onChange(settings.copy(rsvpAtTop = position == "top"))
+                }
+            )
+            Spacer(Modifier.height(8.dp))
             SettingSwitch("다크 모드", settings.darkMode) { onChange(settings.copy(darkMode = it)) }
             Spacer(Modifier.height(24.dp))
         }

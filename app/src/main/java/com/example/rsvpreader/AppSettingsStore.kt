@@ -16,7 +16,9 @@ class AppSettingsStore(context: Context) {
         longWordDelay = prefs.getBoolean("longWordDelay", false),
         ttsRate = prefs.getFloat("ttsRate", 1.0f).coerceIn(0.5f, 2.0f),
         ttsEnginePackage = prefs.getString("ttsEnginePackage", null),
-        ttsVoiceName = prefs.getString("ttsVoiceName", null)
+        ttsVoiceName = prefs.getString("ttsVoiceName", null),
+        lastTtsMode = prefs.getBoolean("lastTtsMode", false),
+        rsvpAtTop = prefs.getBoolean("rsvpAtTop", false)
     )
 
     fun save(settings: AppSettings) {
@@ -30,6 +32,8 @@ class AppSettingsStore(context: Context) {
             .putBoolean("punctuationDelay", settings.punctuationDelay)
             .putBoolean("longWordDelay", settings.longWordDelay)
             .putFloat("ttsRate", settings.ttsRate.coerceIn(0.5f, 2.0f))
+            .putBoolean("lastTtsMode", settings.lastTtsMode)
+            .putBoolean("rsvpAtTop", settings.rsvpAtTop)
             .apply {
                 if (settings.ttsEnginePackage == null) remove("ttsEnginePackage")
                 else putString("ttsEnginePackage", settings.ttsEnginePackage)
