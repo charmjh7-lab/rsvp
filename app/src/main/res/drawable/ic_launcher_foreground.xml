@@ -1,13 +1,70 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp" android:height="108dp"
-    android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#173B70" android:pathData="M13,37 C28,36 42,42 54,54 C66,42 80,36 95,37 L91,79 C76,77 65,82 54,92 C43,82 32,77 17,79 Z"/>
-    <path android:fillColor="#8EBBF2" android:pathData="M20,38 C33,39 44,44 51,53 L51,78 C42,71 33,68 23,68 Z"/>
-    <path android:fillColor="#74ACEB" android:pathData="M88,38 C75,39 64,44 57,53 L57,78 C66,71 75,68 85,68 Z"/>
-    <path android:fillColor="#FFF8EE" android:pathData="M23,70 C34,70 44,74 54,84 C64,74 74,70 85,70 L84,75 C72,74 63,79 54,88 C45,79 36,74 24,75 Z"/>
-    <path android:fillColor="#173B70" android:pathData="M25,74 C37,74 46,78 54,86 C62,78 71,74 83,74 L82,78 C70,78 62,82 54,90 C46,82 38,78 26,78 Z"/>
-    <path android:fillColor="#F2A65A" android:pathData="M31,21 L77,21 C79,21 80,22 80,24 C80,26 79,27 77,27 L31,27 Z"/>
-    <path android:fillColor="#173B70" android:pathData="M52,31 L75,31 C77,31 78,32 78,34 C78,36 77,37 75,37 L52,37 Z"/>
-    <path android:fillColor="#F2A65A" android:pathData="M49,41 L60,41 C62,41 63,42 63,44 C63,46 62,47 60,47 L49,47 C47,47 46,46 46,44 C46,42 47,41 49,41 Z"/>
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Rear card -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#91B6E2"
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M27,34 L63,28 Q67,27 67,32 L67,59 Q67,64 63,65 L29,72 Q24,73 24,68 L24,40 Q24,35 27,34 Z" />
+
+    <!-- Front card shadow -->
+    <group android:translateX="1.4" android:translateY="1.8">
+        <path
+            android:fillColor="@android:color/transparent"
+            android:strokeColor="#260B1622"
+            android:strokeWidth="8"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M45,40 L79,34 Q84,33 84,39 L84,72 Q84,77 79,78 L44,85 Q39,86 39,80 L39,47 Q39,42 45,40 Z" />
+    </group>
+
+    <!-- Front white card with dark frame -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:strokeColor="#17212C"
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M45,39 L79,33 Q84,32 84,38 L84,71 Q84,76 79,77 L44,84 Q39,85 39,79 L39,46 Q39,41 45,39 Z" />
+
+    <!-- Reading lines -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#93B7E1"
+        android:strokeWidth="4.3"
+        android:strokeLineCap="round"
+        android:pathData="M52,49 L75,45" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#93B7E1"
+        android:strokeWidth="4.3"
+        android:strokeLineCap="round"
+        android:pathData="M49,61 L55,60" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#93B7E1"
+        android:strokeWidth="4.3"
+        android:strokeLineCap="round"
+        android:pathData="M71,57 L77,56" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#93B7E1"
+        android:strokeWidth="4.3"
+        android:strokeLineCap="round"
+        android:pathData="M52,72 L75,68" />
+
+    <!-- RSVP focus point -->
+    <path
+        android:fillColor="#FF6B1A"
+        android:pathData="M64,59
+                          m-5.3,0
+                          a5.3,5.3 0,1 0,10.6 0
+                          a5.3,5.3 0,1 0,-10.6 0" />
 </vector>
