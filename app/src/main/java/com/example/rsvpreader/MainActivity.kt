@@ -17,12 +17,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.view.WindowCompat
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        val persistedDarkMode = getSharedPreferences("settings", MODE_PRIVATE)
+            .getBoolean("darkMode", false)
+        setTheme(if (persistedDarkMode) R.style.Theme_RSVPReader_Dark else R.style.Theme_RSVPReader)
         super.onCreate(savedInstanceState)
         setContent { RSVPReaderApp() }
     }
@@ -34,6 +39,29 @@ private sealed interface AppScreen {
     data class Reader(val documentId: String) : AppScreen
 }
 
+private val AppScreenSaver = Saver<AppScreen, String>(
+    save = { screen ->
+        when (screen) {
+            AppScreen.Library -> "library"
+            is AppScreen.Reader -> "reader:" + screen.documentId
+            is AppScreen.Settings -> "settings:" + (screen.returnDocumentId ?: "")
+        }
+    },
+    restore = { encoded ->
+        when {
+            encoded == "library" -> AppScreen.Library
+            encoded.startsWith("reader:") -> encoded.removePrefix("reader:")
+                .takeIf { it.isNotBlank() }
+                ?.let { AppScreen.Reader(it) }
+                ?: AppScreen.Library
+            encoded.startsWith("settings:") -> AppScreen.Settings(
+                encoded.removePrefix("settings:").takeIf { it.isNotBlank() }
+            )
+            else -> AppScreen.Library
+        }
+    }
+)
+
 @Composable
 fun RSVPReaderApp() {
     val context = LocalContext.current
@@ -41,7 +69,9 @@ fun RSVPReaderApp() {
     val settingsStore = remember { AppSettingsStore(context.applicationContext) }
     val importer = remember { FileImporter(context.applicationContext) }
     var settings by remember { mutableStateOf(settingsStore.load()) }
-    var screen: AppScreen by remember { mutableStateOf(AppScreen.Library) }
+    var screen: AppScreen by rememberSaveable(stateSaver = AppScreenSaver) {
+        mutableStateOf(AppScreen.Library)
+    }
     var exitDialog by remember { mutableStateOf(false) }
 
     val useDark = settings.darkMode

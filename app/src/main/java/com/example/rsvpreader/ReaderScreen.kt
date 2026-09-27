@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -68,6 +70,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -80,6 +83,8 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -109,7 +114,6 @@ fun ReaderScreen(
     var isPlaying by remember { mutableStateOf(false) }
     var speedDialog by remember { mutableStateOf(false) }
     var fullTextOpen by remember { mutableStateOf(false) }
-    var fullTextWasPlaying by remember { mutableStateOf(false) }
     var ttsMode by remember(documentId) { mutableStateOf(settings.lastTtsMode) }
     var ttsReady by remember(documentId) { mutableStateOf(false) }
     var ttsNotice by remember(documentId) { mutableStateOf<String?>(null) }
@@ -167,6 +171,11 @@ fun ReaderScreen(
                 }
             }
         }
+        ttsController.onRangeUnavailable = {
+            if (latestTtsMode && latestIsPlaying) {
+                ttsNotice = "이 TTS 엔진은 단어 위치 정보를 제공하지 않아 문장 단위로 표시합니다."
+            }
+        }
         ttsController.onDone = { sentenceIndex ->
             if (latestTtsMode && latestIsPlaying) {
                 val nextSentence = data.sentences.getOrNull(sentenceIndex + 1)
@@ -188,6 +197,7 @@ fun ReaderScreen(
         }
         onDispose {
             ttsController.onRangeStart = null
+            ttsController.onRangeUnavailable = null
             ttsController.onDone = null
             ttsController.onError = null
         }
@@ -291,8 +301,16 @@ fun ReaderScreen(
         }
     }
 
-    LaunchedEffect(currentIndex) {
-        store.updatePosition(documentId, data, currentIndex)
+    LaunchedEffect(documentId, data) {
+        var lastSavedIndex = latestIndex
+        while (true) {
+            delay(1_500L)
+            val indexToSave = latestIndex
+            if (indexToSave != lastSavedIndex) {
+                store.updatePosition(documentId, data, indexToSave)
+                lastSavedIndex = indexToSave
+            }
+        }
     }
 
     LaunchedEffect(isPlaying, ttsMode, currentIndex, settings.wpm, settings.punctuationDelay, settings.longWordDelay) {
@@ -304,7 +322,6 @@ fun ReaderScreen(
 
     BackHandler(enabled = fullTextOpen) {
         fullTextOpen = false
-        fullTextWasPlaying = false
     }
     BackHandler(enabled = speedDialog) { speedDialog = false }
 
@@ -359,7 +376,6 @@ fun ReaderScreen(
                         )
                     }
                     IconButton(onClick = {
-                        fullTextWasPlaying = isPlaying
                         isPlaying = false
                         ttsController.stop()
                         fullTextOpen = true
@@ -435,7 +451,8 @@ fun ReaderScreen(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
         }
 
         if (fullTextOpen) {
@@ -444,7 +461,6 @@ fun ReaderScreen(
                     .fillMaxSize()
                     .clickable {
                         fullTextOpen = false
-                        fullTextWasPlaying = false
                     }
             )
         }
@@ -462,7 +478,6 @@ fun ReaderScreen(
                 highlightColor = settings.effectiveFocusColor,
                 onClose = {
                     fullTextOpen = false
-                    fullTextWasPlaying = false
                 },
                 onSettings = {
                     isPlaying = false
@@ -473,20 +488,9 @@ fun ReaderScreen(
                 },
                 onSentenceClick = { sentenceIndex ->
                     val sentence = data.sentences[sentenceIndex]
+                    fullTextOpen = false
                     if (sentence.tokenCount > 0) {
-                        val shouldResume = fullTextWasPlaying
-                        fullTextWasPlaying = false
-                        fullTextOpen = false
-                        if (shouldResume) {
-                            moveToAndPlay(sentence.tokenStartGlobal)
-                        } else {
-                            ttsController.stop()
-                            isPlaying = false
-                            currentIndex = sentence.tokenStartGlobal
-                        }
-                    } else {
-                        fullTextWasPlaying = false
-                        fullTextOpen = false
+                        moveToAndPlay(sentence.tokenStartGlobal)
                     }
                 },
                 modifier = Modifier
@@ -511,7 +515,7 @@ fun ReaderScreen(
         } else {
             SpeedDialog(
                 wpm = settings.wpm,
-                onWpmChange = { onSettingsChange(settings.copy(wpm = it.coerceIn(60, 1200))) },
+                onWpmChange = { onSettingsChange(settings.copy(wpm = it.coerceIn(WPM_MIN, WPM_MAX))) },
                 onDismiss = { speedDialog = false }
             )
         }
@@ -552,7 +556,7 @@ private fun tokenIndexForTtsRange(
 }
 
 private fun delayFor(token: RsvpToken, settings: AppSettings): Long {
-    val base = 60_000.0 / settings.wpm.coerceIn(60, 1200)
+    val base = 60_000.0 / settings.wpm.coerceIn(WPM_MIN, WPM_MAX)
     var multiplier = 1.0
     if (settings.punctuationDelay) {
         multiplier *= when {
@@ -573,52 +577,108 @@ private fun ContextWindow(
     settings: AppSettings,
     onSentenceClick: (Int) -> Unit
 ) {
-    val start = (sentenceIndex - 2).coerceAtLeast(0)
-    val end = (sentenceIndex + 2).coerceAtMost(data.sentences.lastIndex)
     val effectiveFocusColor = settings.effectiveFocusColor
-    Column(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.Center
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+
+    BoxWithConstraints(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 12.dp)
     ) {
-        for (i in start..end) {
-            val sentence = data.sentences[i]
-            val current = i == sentenceIndex
-            val token = if (current) data.tokens.getOrNull(currentGlobalToken) else null
-            val annotated = remember(sentence.text, token?.globalIndex, effectiveFocusColor) {
-                AnnotatedString.Builder(sentence.text).apply {
-                    if (current && token != null) {
-                        val localStart = (token.start - sentence.start).coerceIn(0, sentence.text.length)
-                        val localEnd = (token.endExclusive - sentence.start).coerceIn(localStart, sentence.text.length)
-                        if (localEnd > localStart) {
-                            addStyle(
-                                SpanStyle(
-                                    background = effectiveFocusColor.copy(alpha = if (settings.darkMode) 0.34f else 0.28f),
-                                    fontWeight = FontWeight.SemiBold
-                                ),
-                                localStart,
-                                localEnd
-                            )
+        val textWidthPx = with(density) { (maxWidth - 24.dp).coerceAtLeast(1.dp).roundToPx() }
+        val availableHeightPx = with(density) { maxHeight.roundToPx() }
+        val currentPaddingPx = with(density) { 28.dp.roundToPx() }
+        val neighborPaddingPx = with(density) { 22.dp.roundToPx() }
+        val lineHeightPx = with(density) { (settings.contextFontSp * 1.45f).sp.roundToPx() }.coerceAtLeast(1)
+        val textStyle = TextStyle(
+            fontSize = settings.contextFontSp.sp,
+            lineHeight = (settings.contextFontSp * 1.45f).sp
+        )
+
+        fun measuredBlockHeight(index: Int): Int {
+            val textHeight = measurer.measure(
+                text = AnnotatedString(data.sentences[index].text),
+                style = textStyle,
+                constraints = Constraints(maxWidth = textWidthPx)
+            ).size.height
+            return textHeight + if (index == sentenceIndex) currentPaddingPx else neighborPaddingPx
+        }
+
+        val visibleIndices = remember(
+            sentenceIndex,
+            settings.contextFontSp,
+            textWidthPx,
+            availableHeightPx,
+            data.sentences
+        ) {
+            val selected = mutableListOf(sentenceIndex)
+            var usedHeight = measuredBlockHeight(sentenceIndex)
+            for (distance in 1..2) {
+                listOf(sentenceIndex - distance, sentenceIndex + distance).forEach { candidate ->
+                    if (candidate in data.sentences.indices) {
+                        val height = measuredBlockHeight(candidate)
+                        if (usedHeight + height <= availableHeightPx) {
+                            selected += candidate
+                            usedHeight += height
                         }
                     }
-                }.toAnnotatedString()
+                }
             }
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp)
-                    .background(
-                        if (current) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f) else Color.Transparent,
-                        RoundedCornerShape(10.dp)
+            selected.sorted()
+        }
+
+        val fullCurrentHeight = measuredBlockHeight(sentenceIndex)
+        val currentMaxLines = if (fullCurrentHeight <= availableHeightPx) {
+            Int.MAX_VALUE
+        } else {
+            ((availableHeightPx - currentPaddingPx).coerceAtLeast(lineHeightPx) / lineHeightPx).coerceAtLeast(1)
+        }
+
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.Center
+        ) {
+            visibleIndices.forEach { i ->
+                val sentence = data.sentences[i]
+                val current = i == sentenceIndex
+                val token = if (current) data.tokens.getOrNull(currentGlobalToken) else null
+                val annotated = remember(sentence.text, token?.globalIndex, effectiveFocusColor) {
+                    AnnotatedString.Builder(sentence.text).apply {
+                        if (current && token != null) {
+                            val localStart = (token.start - sentence.start).coerceIn(0, sentence.text.length)
+                            val localEnd = (token.endExclusive - sentence.start).coerceIn(localStart, sentence.text.length)
+                            if (localEnd > localStart) {
+                                addStyle(
+                                    SpanStyle(
+                                        background = effectiveFocusColor.copy(alpha = if (settings.darkMode) 0.34f else 0.28f),
+                                        fontWeight = FontWeight.SemiBold
+                                    ),
+                                    localStart,
+                                    localEnd
+                                )
+                            }
+                        }
+                    }.toAnnotatedString()
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                        .background(
+                            if (current) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f) else Color.Transparent,
+                            RoundedCornerShape(10.dp)
+                        )
+                        .clickable { onSentenceClick(i) }
+                        .padding(horizontal = 12.dp, vertical = if (current) 10.dp else 7.dp)
+                ) {
+                    Text(
+                        annotated,
+                        fontSize = settings.contextFontSp.sp,
+                        lineHeight = (settings.contextFontSp * 1.45f).sp,
+                        color = if (current) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.76f),
+                        maxLines = if (current) currentMaxLines else Int.MAX_VALUE,
+                        overflow = TextOverflow.Ellipsis
                     )
-                    .clickable { onSentenceClick(i) }
-                    .padding(horizontal = 12.dp, vertical = if (current) 10.dp else 7.dp)
-            ) {
-                Text(
-                    annotated,
-                    fontSize = settings.contextFontSp.sp,
-                    lineHeight = (settings.contextFontSp * 1.45f).sp,
-                    color = if (current) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.76f)
-                )
+                }
             }
         }
     }
@@ -739,76 +799,77 @@ private fun FocusToken(
     settings: AppSettings
 ) {
     val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
     val focusRange = remember(text) { TextProcessor.focusGraphemeRange(text) }
     val baseColor = MaterialTheme.colorScheme.onSurface
     val neighborColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
     val focusColor = if (settings.showFocusColor) settings.effectiveFocusColor else baseColor
     val annotated = remember(text, focusRange, focusColor) {
         AnnotatedString.Builder(text).apply {
-            if (focusRange != null) addStyle(SpanStyle(color = focusColor, fontWeight = FontWeight.Bold), focusRange.first, focusRange.last + 1)
+            if (focusRange != null) {
+                addStyle(SpanStyle(color = focusColor, fontWeight = FontWeight.Bold), focusRange.first, focusRange.last + 1)
+            }
         }.toAnnotatedString()
     }
-    val currentResult = remember(annotated, settings.rsvpFontSp, baseColor) {
-        measurer.measure(
-            text = annotated,
-            style = TextStyle(fontSize = settings.rsvpFontSp.sp, color = baseColor, fontWeight = FontWeight.Medium)
-        )
-    }
-    val neighborFontSp = settings.rsvpFontSp * 0.62f
-    val previousResult = remember(previousText, neighborFontSp, neighborColor) {
-        previousText?.let {
-            measurer.measure(
-                text = AnnotatedString(it),
-                style = TextStyle(fontSize = neighborFontSp.sp, color = neighborColor, fontWeight = FontWeight.Normal)
-            )
-        }
-    }
-    val nextResult = remember(nextText, neighborFontSp, neighborColor) {
-        nextText?.let {
-            measurer.measure(
-                text = AnnotatedString(it),
-                style = TextStyle(fontSize = neighborFontSp.sp, color = neighborColor, fontWeight = FontWeight.Normal)
-            )
-        }
-    }
 
-    Canvas(Modifier.fillMaxWidth().height(94.dp)) {
-        val focusCenter = if (focusRange != null && text.isNotEmpty()) {
-            val first = currentResult.getBoundingBox(focusRange.first)
-            val lastOffset = focusRange.last.coerceAtMost(text.lastIndex)
-            val last = currentResult.getBoundingBox(lastOffset)
+    BoxWithConstraints(Modifier.fillMaxWidth().height(94.dp)) {
+        val availableWidthPx = with(density) { maxWidth.toPx() }
+        val edgePaddingPx = with(density) { 8.dp.toPx() }
+        val requestedResult = remember(annotated, settings.rsvpFontSp, baseColor) {
+            measurer.measure(
+                text = annotated,
+                style = TextStyle(fontSize = settings.rsvpFontSp.sp, color = baseColor, fontWeight = FontWeight.Medium)
+            )
+        }
+        val requestedFocusCenter = if (focusRange != null && text.isNotEmpty()) {
+            val first = requestedResult.getBoundingBox(focusRange.first)
+            val last = requestedResult.getBoundingBox(focusRange.last.coerceAtMost(text.lastIndex))
             (first.left + last.right) / 2f
         } else {
-            currentResult.size.width / 2f
+            requestedResult.size.width / 2f
         }
+        val requiredHalfWidth = maxOf(requestedFocusCenter, requestedResult.size.width - requestedFocusCenter).coerceAtLeast(1f)
+        val usableHalfWidth = (availableWidthPx / 2f - edgePaddingPx).coerceAtLeast(1f)
+        val scale = (usableHalfWidth / requiredHalfWidth).coerceAtMost(1f)
+        val effectiveFontSp = (settings.rsvpFontSp * scale).coerceAtLeast(8f)
 
-        val currentX = size.width / 2f - focusCenter
-        val currentY = (size.height - currentResult.size.height) / 2f
-        val gap = 22.dp.toPx()
-
-        previousResult?.let { previous ->
-            drawText(
-                textLayoutResult = previous,
-                topLeft = Offset(
-                    x = currentX - gap - previous.size.width,
-                    y = (size.height - previous.size.height) / 2f
-                )
+        val currentResult = remember(annotated, effectiveFontSp, baseColor) {
+            measurer.measure(
+                text = annotated,
+                style = TextStyle(fontSize = effectiveFontSp.sp, color = baseColor, fontWeight = FontWeight.Medium)
             )
         }
+        val neighborFontSp = effectiveFontSp * 0.62f
+        val previousResult = remember(previousText, neighborFontSp, neighborColor) {
+            previousText?.let {
+                measurer.measure(text = AnnotatedString(it), style = TextStyle(fontSize = neighborFontSp.sp, color = neighborColor))
+            }
+        }
+        val nextResult = remember(nextText, neighborFontSp, neighborColor) {
+            nextText?.let {
+                measurer.measure(text = AnnotatedString(it), style = TextStyle(fontSize = neighborFontSp.sp, color = neighborColor))
+            }
+        }
 
-        drawText(
-            textLayoutResult = currentResult,
-            topLeft = Offset(currentX, currentY)
-        )
+        Canvas(Modifier.fillMaxSize()) {
+            val focusCenter = if (focusRange != null && text.isNotEmpty()) {
+                val first = currentResult.getBoundingBox(focusRange.first)
+                val last = currentResult.getBoundingBox(focusRange.last.coerceAtMost(text.lastIndex))
+                (first.left + last.right) / 2f
+            } else {
+                currentResult.size.width / 2f
+            }
+            val currentX = size.width / 2f - focusCenter
+            val currentY = (size.height - currentResult.size.height) / 2f
+            val gap = 22.dp.toPx()
 
-        nextResult?.let { next ->
-            drawText(
-                textLayoutResult = next,
-                topLeft = Offset(
-                    x = currentX + currentResult.size.width + gap,
-                    y = (size.height - next.size.height) / 2f
-                )
-            )
+            previousResult?.let { previous ->
+                drawText(textLayoutResult = previous, topLeft = Offset(currentX - gap - previous.size.width, (size.height - previous.size.height) / 2f))
+            }
+            drawText(textLayoutResult = currentResult, topLeft = Offset(currentX, currentY))
+            nextResult?.let { next ->
+                drawText(textLayoutResult = next, topLeft = Offset(currentX + currentResult.size.width + gap, (size.height - next.size.height) / 2f))
+            }
         }
     }
 }
@@ -880,33 +941,33 @@ private fun SpeedDialog(wpm: Int, onWpmChange: (Int) -> Unit, onDismiss: () -> U
                 if (directInput) {
                     TextField(
                         value = input,
-                        onValueChange = { input = it.filter(Char::isDigit).take(4) },
-                        label = { Text("WPM (60–1200)") },
+                        onValueChange = { input = it.filter(Char::isDigit).take(3) },
+                        label = { Text("WPM ($WPM_MIN–$WPM_MAX)") },
                         singleLine = true
                     )
                     Spacer(Modifier.height(8.dp))
                     Button(onClick = {
-                        input.toIntOrNull()?.let { onWpmChange(it.coerceIn(60, 1200)); input = it.coerceIn(60, 1200).toString() }
+                        input.toIntOrNull()?.let {
+                            val clamped = it.coerceIn(WPM_MIN, WPM_MAX)
+                            onWpmChange(clamped)
+                            input = clamped.toString()
+                        }
                         directInput = false
                     }) { Text("적용") }
                 } else {
-                    Text(
-                        "$wpm WPM",
-                        style = MaterialTheme.typography.headlineMedium,
-                        modifier = Modifier.clickable { input = wpm.toString(); directInput = true }.padding(8.dp)
-                    )
+                    Text("$wpm WPM", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.clickable { input = wpm.toString(); directInput = true }.padding(8.dp))
                 }
                 Spacer(Modifier.height(12.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = { onWpmChange((wpm - 10).coerceAtLeast(60)) }) { Text("−", style = MaterialTheme.typography.headlineSmall) }
+                    TextButton(onClick = { onWpmChange((wpm - 10).coerceAtLeast(WPM_MIN)) }) { Text("−", style = MaterialTheme.typography.headlineSmall) }
                     Slider(
-                        value = wpm.toFloat(),
-                        onValueChange = { onWpmChange((it / 10).roundToInt() * 10) },
-                        valueRange = 60f..1200f,
-                        steps = 113,
+                        value = wpm.coerceIn(WPM_MIN, WPM_MAX).toFloat(),
+                        onValueChange = { onWpmChange(((it / 10).roundToInt() * 10).coerceIn(WPM_MIN, WPM_MAX)) },
+                        valueRange = WPM_MIN.toFloat()..WPM_MAX.toFloat(),
+                        steps = ((WPM_MAX - WPM_MIN) / 10 - 1).coerceAtLeast(0),
                         modifier = Modifier.weight(1f)
                     )
-                    TextButton(onClick = { onWpmChange((wpm + 10).coerceAtMost(1200)) }) { Text("+", style = MaterialTheme.typography.headlineSmall) }
+                    TextButton(onClick = { onWpmChange((wpm + 10).coerceAtMost(WPM_MAX)) }) { Text("+", style = MaterialTheme.typography.headlineSmall) }
                 }
                 Text("숫자를 누르면 직접 입력할 수 있습니다.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }

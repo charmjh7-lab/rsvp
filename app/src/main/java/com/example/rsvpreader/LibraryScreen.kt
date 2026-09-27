@@ -66,6 +66,7 @@ fun LibraryScreen(
 ) {
     var documents by remember { mutableStateOf(store.listDocuments()) }
     var pasteDialog by remember { mutableStateOf(false) }
+    var pasteBusy by remember { mutableStateOf(false) }
     var importMenu by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<DocumentEntry?>(null) }
@@ -168,15 +169,23 @@ fun LibraryScreen(
 
     if (pasteDialog) {
         PasteDialog(
-            onDismiss = { pasteDialog = false },
+            isAdding = pasteBusy,
+            onDismiss = { if (!pasteBusy) pasteDialog = false },
             onAdd = { title, text ->
-                val result = store.addDocument(title, SourceType.PASTE, null, text)
-                pasteDialog = false
-                refresh()
-                scope.launch {
-                    when (result) {
-                        is ImportResult.Success -> if (result.duplicateOf != null) snackbar.showSnackbar("이미 서재에 있는 문서입니다: ${result.entry.title}")
-                        is ImportResult.Failure -> snackbar.showSnackbar(result.message)
+                if (!pasteBusy) {
+                    pasteBusy = true
+                    scope.launch {
+                        val result = withContext(Dispatchers.IO) {
+                            runCatching { store.addDocument(title, SourceType.PASTE, null, text) }
+                                .getOrElse { ImportResult.Failure(it.message ?: "텍스트를 추가하지 못했습니다.") }
+                        }
+                        pasteBusy = false
+                        pasteDialog = false
+                        refresh()
+                        when (result) {
+                            is ImportResult.Success -> if (result.duplicateOf != null) snackbar.showSnackbar("이미 서재에 있는 문서입니다: ${result.entry.title}")
+                            is ImportResult.Failure -> snackbar.showSnackbar(result.message)
+                        }
                     }
                 }
             }
@@ -249,21 +258,25 @@ private fun LibraryCard(entry: DocumentEntry, onOpen: () -> Unit, onRename: () -
 }
 
 @Composable
-private fun PasteDialog(onDismiss: () -> Unit, onAdd: (String?, String) -> Unit) {
+private fun PasteDialog(isAdding: Boolean, onDismiss: () -> Unit, onAdd: (String?, String) -> Unit) {
     var title by remember { mutableStateOf("") }
     var text by remember { mutableStateOf("") }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isAdding) onDismiss() },
         title = { Text("텍스트 붙여넣기") },
         text = {
             Column {
-                TextField(value = title, onValueChange = { title = it }, label = { Text("제목 (선택)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                TextField(value = title, onValueChange = { title = it }, label = { Text("제목 (선택)") }, singleLine = true, enabled = !isAdding, modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(10.dp))
-                TextField(value = text, onValueChange = { text = it }, label = { Text("본문") }, minLines = 8, maxLines = 14, modifier = Modifier.fillMaxWidth())
+                TextField(value = text, onValueChange = { text = it }, label = { Text("본문") }, minLines = 8, maxLines = 14, enabled = !isAdding, modifier = Modifier.fillMaxWidth())
             }
         },
-        confirmButton = { Button(onClick = { onAdd(title.takeIf { it.isNotBlank() }, text) }, enabled = text.isNotBlank()) { Text("추가") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } }
+        confirmButton = {
+            Button(onClick = { onAdd(title.takeIf { it.isNotBlank() }, text) }, enabled = text.isNotBlank() && !isAdding) {
+                Text(if (isAdding) "추가 중…" else "추가")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !isAdding) { Text("취소") } }
     )
 }
 

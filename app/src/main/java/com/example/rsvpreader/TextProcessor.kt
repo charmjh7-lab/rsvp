@@ -73,6 +73,12 @@ object TextProcessor {
             start = endExclusive
         }
 
+        fun hasBoundaryAfter(endExclusive: Int): Boolean {
+            if (endExclusive >= text.length) return true
+            val after = nextNonWhitespace(text, endExclusive)
+            return after == -1 || after > endExclusive
+        }
+
         while (i < text.length) {
             if (i + 1 < text.length && text[i] == '\n' && text[i + 1] == '\n') {
                 addRange(i)
@@ -82,17 +88,29 @@ object TextProcessor {
             }
 
             val ch = text[i]
+            if (ch == '.' && isAsciiEllipsisAt(text, i)) {
+                var sentenceEnd = i
+                while (sentenceEnd < text.length && text[sentenceEnd] == '.') sentenceEnd++
+                while (sentenceEnd < text.length && closingChars.contains(text[sentenceEnd])) sentenceEnd++
+                if (hasBoundaryAfter(sentenceEnd)) {
+                    addRange(sentenceEnd)
+                    i = sentenceEnd
+                    start = sentenceEnd
+                    continue
+                }
+                i = sentenceEnd
+                continue
+            }
+
             if (strongPauseChars.contains(ch)) {
-                val isPeriodLike = ch == '.' || ch == '。'
-                val shouldSplit = !isPeriodLike || !isInternalPeriod(text, i)
+                val shouldSplit = (ch != '.' && ch != '。') || !isInternalPeriod(text, i)
                 if (shouldSplit) {
-                    var end = i + 1
-                    while (end < text.length && closingChars.contains(text[end])) end++
-                    val after = nextNonWhitespace(text, end)
-                    if (after == -1 || end < text.length && text.substring(end, after).isNotEmpty() || end == text.length) {
-                        addRange(end)
-                        i = end
-                        start = end
+                    var sentenceEnd = i + 1
+                    while (sentenceEnd < text.length && closingChars.contains(text[sentenceEnd])) sentenceEnd++
+                    if (hasBoundaryAfter(sentenceEnd)) {
+                        addRange(sentenceEnd)
+                        i = sentenceEnd
+                        start = sentenceEnd
                         continue
                     }
                 }
@@ -108,22 +126,42 @@ object TextProcessor {
         val next = text.getOrNull(index + 1)
         if (prev?.isDigit() == true && next?.isDigit() == true) return true
 
-        var s = index - 1
-        while (s >= 0 && (text[s].isLetter() || text[s] == '.')) s--
-        val beforeWithDots = text.substring(s + 1, index)
-        val normalized = beforeWithDots.lowercase(Locale.ROOT).trim('.')
-        if (normalized in commonAbbreviations) return true
+        var tokenStart = index - 1
+        while (tokenStart >= 0 && (text[tokenStart].isLetter() || text[tokenStart] == '.')) tokenStart--
+        tokenStart++
+        var tokenEnd = index + 1
+        while (tokenEnd < text.length && (text[tokenEnd].isLetter() || text[tokenEnd] == '.')) tokenEnd++
+        val dottedCandidate = text.substring(tokenStart, tokenEnd).trim('.').lowercase(Locale.ROOT)
+        if (dottedCandidate in commonAbbreviations && dottedCandidate.contains('.')) {
+            val hasMoreOfAbbreviation = (index + 1 until tokenEnd).any { text[it].isLetter() || text[it] == '.' }
+            if (hasMoreOfAbbreviation) return true
+            return abbreviationContinuesSentence(dottedCandidate, text, index)
+        }
 
-        val includingCurrentDot = text.substring(s + 1, index + 1)
-        if (Regex("(?i)(?:[a-z]\\.){2,}").matches(includingCurrentDot)) return true
+        val before = text.substring(tokenStart, index).lowercase(Locale.ROOT).trim('.')
+        if (before in commonAbbreviations) return abbreviationContinuesSentence(before, text, index)
 
-        // A single-letter initial in a name, e.g. "A. Smith".
-        if (beforeWithDots.length == 1 && beforeWithDots[0].isUpperCase()) {
+        if (before.length == 1 && text[tokenStart].isUpperCase()) {
             val nextNonSpace = nextNonWhitespace(text, index + 1)
             if (nextNonSpace != -1 && text[nextNonSpace].isLetter()) return true
         }
         return false
     }
+
+    private fun abbreviationContinuesSentence(abbreviation: String, text: String, periodIndex: Int): Boolean {
+        val nextIndex = nextNonWhitespace(text, periodIndex + 1)
+        if (nextIndex == -1) return false
+        val next = text[nextIndex]
+        return when (abbreviation) {
+            "mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st" -> next.isLetterOrDigit()
+            "e.g", "i.e", "u.s", "u.k" -> true
+            "etc" -> next.isLowerCase() || next.isDigit()
+            else -> next.isLowerCase() || next.isDigit()
+        }
+    }
+
+    private fun isAsciiEllipsisAt(text: String, index: Int): Boolean =
+        index + 2 < text.length && text[index] == '.' && text[index + 1] == '.' && text[index + 2] == '.'
 
     private fun nextNonWhitespace(text: String, from: Int): Int {
         var i = from
@@ -198,6 +236,11 @@ object TextProcessor {
                 }
 
                 if (strongPauseChars.contains(c)) {
+                    if (c == '.' && isAsciiEllipsisAt(sentence, j)) {
+                        while (j < sentence.length && sentence[j] == '.') j++
+                        while (j < sentence.length && closingChars.contains(sentence[j])) j++
+                        break
+                    }
                     if (c == '.' && isInternalPeriod(sentence, j)) {
                         j++
                         continue

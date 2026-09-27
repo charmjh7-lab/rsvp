@@ -39,8 +39,11 @@ class SystemTtsController(context: Context) {
     private var activeUtteranceId: String? = null
     private var activeSentenceIndex: Int = -1
     private var activeGlobalCharStart: Int = 0
+    private var activeRangeReported = false
+    private var rangeUnavailableNotified = false
 
     var onRangeStart: ((sentenceIndex: Int, globalStart: Int, globalEnd: Int) -> Unit)? = null
+    var onRangeUnavailable: ((sentenceIndex: Int) -> Unit)? = null
     var onDone: ((sentenceIndex: Int) -> Unit)? = null
     var onError: ((message: String) -> Unit)? = null
 
@@ -74,6 +77,8 @@ class SystemTtsController(context: Context) {
         val myGeneration = ++generation
         ready = false
         activeUtteranceId = null
+        activeRangeReported = false
+        rangeUnavailableNotified = false
         tts?.stop()
         tts?.shutdown()
         tts = null
@@ -186,7 +191,13 @@ class SystemTtsController(context: Context) {
                         return@post
                     }
                     val sentence = activeSentenceIndex
+                    val hadRange = activeRangeReported
                     activeUtteranceId = null
+                    activeRangeReported = false
+                    if (!hadRange && !rangeUnavailableNotified) {
+                        rangeUnavailableNotified = true
+                        onRangeUnavailable?.invoke(sentence)
+                    }
                     onDone?.invoke(sentence)
                 }
             }
@@ -205,6 +216,7 @@ class SystemTtsController(context: Context) {
                     if (listenerGeneration != generation || utteranceId == null || utteranceId != activeUtteranceId) {
                         return@post
                     }
+                    activeRangeReported = true
                     onRangeStart?.invoke(
                         activeSentenceIndex,
                         activeGlobalCharStart + start,
@@ -239,6 +251,7 @@ class SystemTtsController(context: Context) {
         activeUtteranceId = utteranceId
         activeSentenceIndex = sentenceIndex
         activeGlobalCharStart = globalCharStart
+        activeRangeReported = false
 
         val result = engine.speak(
             text as CharSequence,
@@ -256,6 +269,7 @@ class SystemTtsController(context: Context) {
 
     fun stop() {
         activeUtteranceId = null
+        activeRangeReported = false
         tts?.stop()
     }
 
@@ -263,10 +277,12 @@ class SystemTtsController(context: Context) {
         ++generation
         ready = false
         activeUtteranceId = null
+        activeRangeReported = false
         tts?.stop()
         tts?.shutdown()
         tts = null
         onRangeStart = null
+        onRangeUnavailable = null
         onDone = null
         onError = null
     }

@@ -3,6 +3,10 @@ package com.example.rsvpreader
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 
+const val WPM_MIN = 60
+const val WPM_MAX = 600
+const val WPM_DEFAULT = 240
+
 enum class SourceType { PASTE, TXT, PDF, EPUB }
 
 enum class LightBackground { WHITE, WARM }
@@ -56,7 +60,7 @@ data class ReaderPosition(
 )
 
 data class AppSettings(
-    val wpm: Int = 240,
+    val wpm: Int = WPM_DEFAULT,
     val focusColorArgb: Long = 0xFFE65100,
     val showFocusColor: Boolean = true,
     val contextFontSp: Float = 20f,

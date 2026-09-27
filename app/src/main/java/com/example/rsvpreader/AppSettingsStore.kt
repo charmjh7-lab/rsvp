@@ -6,7 +6,7 @@ class AppSettingsStore(context: Context) {
     private val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
     fun load(): AppSettings = AppSettings(
-        wpm = prefs.getInt("wpm", 240).coerceIn(60, 1200),
+        wpm = prefs.getInt("wpm", WPM_DEFAULT).coerceIn(WPM_MIN, WPM_MAX),
         focusColorArgb = prefs.getLong("focusColor", 0xFFE65100),
         showFocusColor = prefs.getBoolean("showFocusColor", true),
         contextFontSp = prefs.getFloat("contextFontSp", 20f).coerceIn(14f, 34f),
@@ -28,7 +28,7 @@ class AppSettingsStore(context: Context) {
 
     fun save(settings: AppSettings) {
         prefs.edit()
-            .putInt("wpm", settings.wpm.coerceIn(60, 1200))
+            .putInt("wpm", settings.wpm.coerceIn(WPM_MIN, WPM_MAX))
             .putLong("focusColor", settings.focusColorArgb)
             .putBoolean("showFocusColor", settings.showFocusColor)
             .putFloat("contextFontSp", settings.contextFontSp)
