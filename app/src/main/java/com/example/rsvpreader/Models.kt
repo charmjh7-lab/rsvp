@@ -60,7 +60,10 @@ data class AppSettings(
     val rsvpFontSp: Float = 46f,
     val darkMode: Boolean = false,
     val punctuationDelay: Boolean = true,
-    val longWordDelay: Boolean = false
+    val longWordDelay: Boolean = false,
+    val ttsRate: Float = 1.0f,
+    val ttsEnginePackage: String? = null,
+    val ttsVoiceName: String? = null
 ) {
     val focusColor: Color get() = Color(focusColorArgb.toInt())
 }

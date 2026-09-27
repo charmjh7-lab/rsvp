@@ -18,6 +18,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -29,15 +32,53 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(settings: AppSettings, onChange: (AppSettings) -> Unit, onBack: () -> Unit) {
+    val appContext = LocalContext.current.applicationContext
+    val ttsProbe = remember { SystemTtsController(appContext) }
+    var ttsInfo by remember { mutableStateOf<TtsReadyInfo?>(null) }
+    var ttsStatus by remember { mutableStateOf<String?>(null) }
+
+    DisposableEffect(ttsProbe) {
+        onDispose { ttsProbe.shutdown() }
+    }
+
+    LaunchedEffect(settings.ttsEnginePackage, settings.ttsVoiceName) {
+        ttsInfo = null
+        ttsProbe.initialize(
+            enginePackage = settings.ttsEnginePackage,
+            voiceName = settings.ttsVoiceName,
+            speechRate = settings.ttsRate,
+            onReady = { info ->
+                ttsInfo = info
+                if (info.fellBackToDefault && settings.ttsEnginePackage != null) {
+                    onChange(settings.copy(ttsEnginePackage = null, ttsVoiceName = null))
+                } else if (settings.ttsVoiceName != null && !info.selectedVoiceAvailable) {
+                    onChange(settings.copy(ttsVoiceName = null))
+                }
+            },
+            onMessage = { ttsStatus = it }
+        )
+    }
+
+    LaunchedEffect(settings.ttsRate) {
+        ttsProbe.setSpeechRate(settings.ttsRate)
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -106,6 +147,81 @@ fun SettingsScreen(settings: AppSettings, onChange: (AppSettings) -> Unit, onBac
             Spacer(Modifier.height(18.dp))
             HorizontalDivider()
             Spacer(Modifier.height(20.dp))
+            SectionTitle("TTS")
+            val info = ttsInfo
+            val defaultLabel = info?.engines
+                ?.firstOrNull { it.packageName == info.defaultEnginePackage }
+                ?.label
+            val engineChoices = buildList {
+                add(
+                    SettingChoice(
+                        value = null,
+                        label = if (defaultLabel.isNullOrBlank()) "시스템 기본 TTS" else "시스템 기본 TTS (" + defaultLabel + ")"
+                    )
+                )
+                info?.engines.orEmpty().forEach { add(SettingChoice(it.packageName, it.label)) }
+            }
+            val currentEngineLabel = engineChoices
+                .firstOrNull { it.value == settings.ttsEnginePackage }
+                ?.label
+                ?: "시스템 기본 TTS"
+            SettingPicker(
+                label = "TTS 엔진",
+                selectedLabel = currentEngineLabel,
+                choices = engineChoices,
+                onSelect = { packageName ->
+                    if (packageName != settings.ttsEnginePackage) {
+                        ttsStatus = null
+                        onChange(settings.copy(ttsEnginePackage = packageName, ttsVoiceName = null))
+                    }
+                }
+            )
+            Spacer(Modifier.height(10.dp))
+            val voiceChoices = buildList {
+                add(SettingChoice(value = null, label = "엔진 기본 음성"))
+                info?.voices.orEmpty().forEach { add(SettingChoice(it.name, it.label)) }
+            }
+            val currentVoiceLabel = voiceChoices
+                .firstOrNull { it.value == settings.ttsVoiceName }
+                ?.label
+                ?: "엔진 기본 음성"
+            SettingPicker(
+                label = "음성",
+                selectedLabel = currentVoiceLabel,
+                choices = voiceChoices,
+                onSelect = { voiceName ->
+                    ttsStatus = null
+                    onChange(settings.copy(ttsVoiceName = voiceName))
+                }
+            )
+            Spacer(Modifier.height(10.dp))
+            Text("TTS 배속 " + String.format(java.util.Locale.US, "%.1f×", settings.ttsRate))
+            Slider(
+                value = settings.ttsRate,
+                onValueChange = {
+                    val rate = ((it * 10).roundToInt() / 10f).coerceIn(0.5f, 2.0f)
+                    onChange(settings.copy(ttsRate = rate))
+                },
+                valueRange = 0.5f..2.0f,
+                steps = 14
+            )
+            Text(
+                "설치된 시스템 TTS 엔진과 해당 엔진이 제공하는 음성을 사용합니다.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (ttsStatus != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    ttsStatus ?: "",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+
+            Spacer(Modifier.height(18.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(20.dp))
             SectionTitle("화면")
             SettingSwitch("다크 모드", settings.darkMode) { onChange(settings.copy(darkMode = it)) }
             Spacer(Modifier.height(24.dp))
@@ -127,5 +243,48 @@ private fun SettingSwitch(label: String, checked: Boolean, onChecked: (Boolean) 
     ) {
         Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
         Switch(checked = checked, onCheckedChange = onChecked)
+    }
+}
+
+
+private data class SettingChoice(
+    val value: String?,
+    val label: String
+)
+
+@Composable
+private fun SettingPicker(
+    label: String,
+    selectedLabel: String,
+    choices: List<SettingChoice>,
+    onSelect: (String?) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            Modifier.fillMaxWidth().clickable { expanded = true }.padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(label, style = MaterialTheme.typography.labelLarge)
+                Text(
+                    selectedLabel,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Icon(Icons.Default.ArrowDropDown, null)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            choices.forEach { choice ->
+                DropdownMenuItem(
+                    text = { Text(choice.label) },
+                    onClick = {
+                        expanded = false
+                        onSelect(choice.value)
+                    }
+                )
+            }
+        }
     }
 }

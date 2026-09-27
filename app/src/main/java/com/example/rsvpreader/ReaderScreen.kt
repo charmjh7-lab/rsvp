@@ -32,6 +32,8 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Subject
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -57,6 +59,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -78,6 +81,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -95,6 +99,15 @@ fun ReaderScreen(
     var isPlaying by remember { mutableStateOf(false) }
     var speedDialog by remember { mutableStateOf(false) }
     var fullTextOpen by remember { mutableStateOf(false) }
+    var ttsMode by remember(documentId) { mutableStateOf(false) }
+    var ttsReady by remember(documentId) { mutableStateOf(false) }
+    var ttsNotice by remember(documentId) { mutableStateOf<String?>(null) }
+    val appContext = LocalContext.current.applicationContext
+    val ttsController = remember(documentId) { SystemTtsController(appContext) }
+
+    DisposableEffect(ttsController) {
+        onDispose { ttsController.shutdown() }
+    }
 
     LaunchedEffect(documentId) {
         val text = withContext(Dispatchers.IO) { store.loadText(documentId) }
@@ -130,30 +143,111 @@ fun ReaderScreen(
     val progress = if (data.tokens.size <= 1) 1f else safeIndex.toFloat() / data.tokens.lastIndex.toFloat()
     val lifecycleOwner = LocalLifecycleOwner.current
     val latestIndex by rememberUpdatedState(currentIndex)
+    val latestIsPlaying by rememberUpdatedState(isPlaying)
+    val latestTtsMode by rememberUpdatedState(ttsMode)
 
-    DisposableEffect(lifecycleOwner, data, documentId) {
+    fun startTtsAt(index: Int): Boolean = speakTtsFromIndex(ttsController, data, index)
+
+    DisposableEffect(ttsController, data) {
+        ttsController.onRangeStart = { sentenceIndex, globalStart, globalEnd ->
+            if (latestTtsMode && latestIsPlaying) {
+                tokenIndexForTtsRange(data, sentenceIndex, globalStart, globalEnd)?.let {
+                    currentIndex = it
+                }
+            }
+        }
+        ttsController.onDone = { sentenceIndex ->
+            if (latestTtsMode && latestIsPlaying) {
+                val nextSentence = data.sentences.getOrNull(sentenceIndex + 1)
+                if (nextSentence != null && nextSentence.tokenCount > 0) {
+                    val nextIndex = nextSentence.tokenStartGlobal
+                    currentIndex = nextIndex
+                    if (!startTtsAt(nextIndex)) {
+                        isPlaying = false
+                        ttsNotice = "다음 문장을 TTS로 재생하지 못했습니다."
+                    }
+                } else {
+                    isPlaying = false
+                }
+            }
+        }
+        ttsController.onError = { message ->
+            isPlaying = false
+            ttsNotice = message
+        }
+        onDispose {
+            ttsController.onRangeStart = null
+            ttsController.onDone = null
+            ttsController.onError = null
+        }
+    }
+
+    LaunchedEffect(ttsMode, settings.ttsEnginePackage, settings.ttsVoiceName) {
+        if (ttsMode) {
+            ttsReady = false
+            ttsController.initialize(
+                enginePackage = settings.ttsEnginePackage,
+                voiceName = settings.ttsVoiceName,
+                speechRate = settings.ttsRate,
+                onReady = { info ->
+                    ttsReady = true
+                    if (info.fellBackToDefault && settings.ttsEnginePackage != null) {
+                        onSettingsChange(settings.copy(ttsEnginePackage = null, ttsVoiceName = null))
+                    } else if (settings.ttsVoiceName != null && !info.selectedVoiceAvailable) {
+                        onSettingsChange(settings.copy(ttsVoiceName = null))
+                    }
+                },
+                onMessage = { ttsNotice = it }
+            )
+        } else {
+            ttsReady = false
+            ttsController.stop()
+        }
+    }
+
+    LaunchedEffect(ttsMode, settings.ttsRate) {
+        if (ttsMode) ttsController.setSpeechRate(settings.ttsRate)
+    }
+
+    DisposableEffect(lifecycleOwner, data, documentId, ttsController) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) {
-                store.updatePosition(documentId, data, latestIndex, sync = true)
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> {
+                    isPlaying = false
+                    ttsController.stop()
+                    store.updatePosition(documentId, data, latestIndex, sync = true)
+                }
+                Lifecycle.Event.ON_STOP -> {
+                    store.updatePosition(documentId, data, latestIndex, sync = true)
+                }
+                else -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
+            ttsController.stop()
             store.updatePosition(documentId, data, latestIndex, sync = true)
             lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
     fun moveTo(index: Int) {
-        currentIndex = index.coerceIn(0, data.tokens.lastIndex)
+        val target = index.coerceIn(0, data.tokens.lastIndex)
+        val continueTts = ttsMode && isPlaying
+        if (continueTts) ttsController.stop()
+        currentIndex = target
+        if (continueTts && !startTtsAt(target)) {
+            isPlaying = false
+            ttsNotice = "이 위치부터 TTS를 다시 시작하지 못했습니다."
+        }
     }
 
     LaunchedEffect(currentIndex) {
         store.updatePosition(documentId, data, currentIndex)
     }
 
-    LaunchedEffect(isPlaying, currentIndex, settings.wpm, settings.punctuationDelay, settings.longWordDelay) {
-        if (!isPlaying) return@LaunchedEffect
+    LaunchedEffect(isPlaying, ttsMode, currentIndex, settings.wpm, settings.punctuationDelay, settings.longWordDelay) {
+        if (!isPlaying || ttsMode) return@LaunchedEffect
         val token = data.tokens[currentIndex]
         delay(delayFor(token, settings))
         if (currentIndex < data.tokens.lastIndex) currentIndex++ else isPlaying = false
@@ -175,20 +269,53 @@ fun ReaderScreen(
                 title = { Text(document?.title ?: "문서", maxLines = 1) },
                 navigationIcon = {
                     IconButton(onClick = {
+                        isPlaying = false
+                        ttsController.stop()
                         store.updatePosition(documentId, data, currentIndex, sync = true)
                         onBack()
                     }) { Icon(Icons.Default.ArrowBack, "서재로") }
                 },
                 actions = {
-                    TextButton(onClick = { isPlaying = false; speedDialog = true }) {
+                    IconButton(onClick = {
+                        isPlaying = false
+                        ttsController.stop()
+                        ttsNotice = null
+                        ttsMode = !ttsMode
+                    }) {
+                        Icon(
+                            if (ttsMode) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
+                            if (ttsMode) "TTS 모드 사용 중" else "일반 RSVP 모드 사용 중",
+                            tint = if (ttsMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    TextButton(onClick = {
+                        isPlaying = false
+                        ttsController.stop()
+                        speedDialog = true
+                    }) {
                         Icon(Icons.Default.Speed, null)
                         Spacer(Modifier.width(4.dp))
-                        Text("${settings.wpm} WPM")
+                        Text(
+                            if (ttsMode) String.format(Locale.US, "%.1f×", settings.ttsRate)
+                            else "${settings.wpm} WPM"
+                        )
                     }
-                    IconButton(onClick = { isPlaying = false; fullTextOpen = true }) { Icon(Icons.Default.Subject, "전체 글") }
+                    IconButton(onClick = {
+                        isPlaying = false
+                        ttsController.stop()
+                        fullTextOpen = true
+                    }) { Icon(Icons.Default.Subject, "전체 글") }
                 }
             )
             LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().height(3.dp))
+            if (ttsNotice != null) {
+                Text(
+                    ttsNotice ?: "",
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
 
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 ContextWindow(
@@ -211,7 +338,23 @@ fun ReaderScreen(
                 canPrevious = currentIndex > 0,
                 canNext = currentIndex < data.tokens.lastIndex,
                 onPrevious = { moveTo(currentIndex - 1) },
-                onPlayPause = { isPlaying = !isPlaying },
+                onPlayPause = {
+                    if (isPlaying) {
+                        isPlaying = false
+                        ttsController.stop()
+                    } else if (ttsMode) {
+                        if (!ttsReady) {
+                            ttsNotice = "TTS를 준비하는 중이거나 사용할 수 없습니다."
+                        } else if (startTtsAt(currentIndex)) {
+                            ttsNotice = null
+                            isPlaying = true
+                        } else {
+                            ttsNotice = "현재 위치에서 TTS를 시작하지 못했습니다."
+                        }
+                    } else {
+                        isPlaying = true
+                    }
+                },
                 onNext = { moveTo(currentIndex + 1) }
             )
             Text(
@@ -235,6 +378,7 @@ fun ReaderScreen(
                 onClose = { fullTextOpen = false },
                 onSentenceClick = { sentenceIndex ->
                     val sentence = data.sentences[sentenceIndex]
+                    ttsController.stop()
                     if (sentence.tokenCount > 0) currentIndex = sentence.tokenStartGlobal
                     isPlaying = false
                     fullTextOpen = false
@@ -245,12 +389,57 @@ fun ReaderScreen(
     }
 
     if (speedDialog) {
-        SpeedDialog(
-            wpm = settings.wpm,
-            onWpmChange = { onSettingsChange(settings.copy(wpm = it.coerceIn(60, 1200))) },
-            onDismiss = { speedDialog = false }
-        )
+        if (ttsMode) {
+            TtsSpeedDialog(
+                rate = settings.ttsRate,
+                onRateChange = {
+                    val rate = it.coerceIn(0.5f, 2.0f)
+                    onSettingsChange(settings.copy(ttsRate = rate))
+                    ttsController.setSpeechRate(rate)
+                },
+                onDismiss = { speedDialog = false }
+            )
+        } else {
+            SpeedDialog(
+                wpm = settings.wpm,
+                onWpmChange = { onSettingsChange(settings.copy(wpm = it.coerceIn(60, 1200))) },
+                onDismiss = { speedDialog = false }
+            )
+        }
     }
+}
+
+private fun speakTtsFromIndex(
+    controller: SystemTtsController,
+    data: ProcessedDocument,
+    index: Int
+): Boolean {
+    if (data.tokens.isEmpty()) return false
+    val safeIndex = index.coerceIn(0, data.tokens.lastIndex)
+    val token = data.tokens[safeIndex]
+    val sentence = data.sentences.getOrNull(token.sentenceIndex) ?: return false
+    val start = token.start.coerceIn(sentence.start, sentence.endExclusive)
+    if (start >= sentence.endExclusive) return false
+    val text = data.normalizedText.substring(start, sentence.endExclusive)
+    return controller.speak(text, start, token.sentenceIndex)
+}
+
+private fun tokenIndexForTtsRange(
+    data: ProcessedDocument,
+    sentenceIndex: Int,
+    globalStart: Int,
+    globalEnd: Int
+): Int? {
+    val sentence = data.sentences.getOrNull(sentenceIndex) ?: return null
+    if (sentence.tokenCount <= 0) return null
+    val from = sentence.tokenStartGlobal
+    val to = (from + sentence.tokenCount).coerceAtMost(data.tokens.size)
+    val tokens = data.tokens.subList(from, to)
+
+    return tokens.firstOrNull { globalStart >= it.start && globalStart < it.endExclusive }?.globalIndex
+        ?: tokens.firstOrNull { globalStart < it.endExclusive && globalEnd > it.start }?.globalIndex
+        ?: tokens.firstOrNull { it.start >= globalStart }?.globalIndex
+        ?: tokens.lastOrNull()?.globalIndex
 }
 
 private fun delayFor(token: RsvpToken, settings: AppSettings): Long {
@@ -468,6 +657,45 @@ private fun SpeedDialog(wpm: Int, onWpmChange: (Int) -> Unit, onDismiss: () -> U
                     TextButton(onClick = { onWpmChange((wpm + 10).coerceAtMost(1200)) }) { Text("+", style = MaterialTheme.typography.headlineSmall) }
                 }
                 Text("숫자를 누르면 직접 입력할 수 있습니다.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("닫기") } }
+    )
+}
+
+
+@Composable
+private fun TtsSpeedDialog(rate: Float, onRateChange: (Float) -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("TTS 음성 속도") },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    String.format(Locale.US, "%.1f×", rate),
+                    style = MaterialTheme.typography.headlineMedium
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = {
+                        onRateChange(((rate * 10).roundToInt() - 1).coerceAtLeast(5) / 10f)
+                    }) { Text("−", style = MaterialTheme.typography.headlineSmall) }
+                    Slider(
+                        value = rate,
+                        onValueChange = { onRateChange(((it * 10).roundToInt() / 10f).coerceIn(0.5f, 2.0f)) },
+                        valueRange = 0.5f..2.0f,
+                        steps = 14,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(onClick = {
+                        onRateChange(((rate * 10).roundToInt() + 1).coerceAtMost(20) / 10f)
+                    }) { Text("+", style = MaterialTheme.typography.headlineSmall) }
+                }
+                Text(
+                    "TTS 모드에서는 WPM·문장부호 지연 대신 실제 음성 재생 시간이 기준이 됩니다.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("닫기") } }

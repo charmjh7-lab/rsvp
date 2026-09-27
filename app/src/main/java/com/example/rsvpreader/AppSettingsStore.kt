@@ -13,7 +13,10 @@ class AppSettingsStore(context: Context) {
         rsvpFontSp = prefs.getFloat("rsvpFontSp", 46f).coerceIn(28f, 80f),
         darkMode = prefs.getBoolean("darkMode", false),
         punctuationDelay = prefs.getBoolean("punctuationDelay", true),
-        longWordDelay = prefs.getBoolean("longWordDelay", false)
+        longWordDelay = prefs.getBoolean("longWordDelay", false),
+        ttsRate = prefs.getFloat("ttsRate", 1.0f).coerceIn(0.5f, 2.0f),
+        ttsEnginePackage = prefs.getString("ttsEnginePackage", null),
+        ttsVoiceName = prefs.getString("ttsVoiceName", null)
     )
 
     fun save(settings: AppSettings) {
@@ -26,6 +29,13 @@ class AppSettingsStore(context: Context) {
             .putBoolean("darkMode", settings.darkMode)
             .putBoolean("punctuationDelay", settings.punctuationDelay)
             .putBoolean("longWordDelay", settings.longWordDelay)
+            .putFloat("ttsRate", settings.ttsRate.coerceIn(0.5f, 2.0f))
+            .apply {
+                if (settings.ttsEnginePackage == null) remove("ttsEnginePackage")
+                else putString("ttsEnginePackage", settings.ttsEnginePackage)
+                if (settings.ttsVoiceName == null) remove("ttsVoiceName")
+                else putString("ttsVoiceName", settings.ttsVoiceName)
+            }
             .apply()
     }
 }
