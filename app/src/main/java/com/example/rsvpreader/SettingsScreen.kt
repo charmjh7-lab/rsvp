@@ -234,7 +234,28 @@ fun SettingsScreen(settings: AppSettings, onChange: (AppSettings) -> Unit, onBac
                     onChange(settings.copy(rsvpAtTop = position == "top"))
                 }
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(12.dp))
+            SettingPicker(
+                label = "밝은 모드 배경색",
+                selectedLabel = if (settings.lightBackground == LightBackground.WHITE) "흰색" else "따뜻한 크림색",
+                choices = listOf(
+                    SettingChoice("white", "흰색"),
+                    SettingChoice("warm", "따뜻한 크림색")
+                ),
+                onSelect = { background ->
+                    onChange(
+                        settings.copy(
+                            lightBackground = if (background == "warm") LightBackground.WARM else LightBackground.WHITE
+                        )
+                    )
+                }
+            )
+            Text(
+                "다크 모드에서는 선택값을 유지한 채 어두운 배경을 사용합니다.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(12.dp))
             SettingSwitch("다크 모드", settings.darkMode) { onChange(settings.copy(darkMode = it)) }
             Spacer(Modifier.height(24.dp))
         }

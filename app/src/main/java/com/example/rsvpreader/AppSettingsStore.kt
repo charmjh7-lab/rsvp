@@ -12,6 +12,11 @@ class AppSettingsStore(context: Context) {
         contextFontSp = prefs.getFloat("contextFontSp", 20f).coerceIn(14f, 34f),
         rsvpFontSp = prefs.getFloat("rsvpFontSp", 46f).coerceIn(28f, 80f),
         darkMode = prefs.getBoolean("darkMode", false),
+        lightBackground = runCatching {
+            LightBackground.valueOf(
+                prefs.getString("lightBackground", LightBackground.WHITE.name) ?: LightBackground.WHITE.name
+            )
+        }.getOrDefault(LightBackground.WHITE),
         punctuationDelay = prefs.getBoolean("punctuationDelay", true),
         longWordDelay = prefs.getBoolean("longWordDelay", false),
         ttsRate = prefs.getFloat("ttsRate", 1.0f).coerceIn(0.5f, 2.0f),
@@ -29,6 +34,7 @@ class AppSettingsStore(context: Context) {
             .putFloat("contextFontSp", settings.contextFontSp)
             .putFloat("rsvpFontSp", settings.rsvpFontSp)
             .putBoolean("darkMode", settings.darkMode)
+            .putString("lightBackground", settings.lightBackground.name)
             .putBoolean("punctuationDelay", settings.punctuationDelay)
             .putBoolean("longWordDelay", settings.longWordDelay)
             .putFloat("ttsRate", settings.ttsRate.coerceIn(0.5f, 2.0f))

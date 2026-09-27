@@ -308,7 +308,11 @@ fun ReaderScreen(
     }
     BackHandler(enabled = speedDialog) { speedDialog = false }
 
-    BoxWithConstraints(Modifier.fillMaxSize()) {
+    BoxWithConstraints(
+        Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
         val shift = if (fullTextOpen) -0.18f else 0f
         val shiftPx = constraints.maxWidth.toFloat() * shift
 
@@ -455,7 +459,7 @@ fun ReaderScreen(
                 data = data,
                 currentSentenceIndex = currentSentenceIndex,
                 fontSize = settings.contextFontSp,
-                highlightColor = settings.focusColor,
+                highlightColor = settings.effectiveFocusColor,
                 onClose = {
                     fullTextOpen = false
                     fullTextWasPlaying = false
@@ -571,6 +575,7 @@ private fun ContextWindow(
 ) {
     val start = (sentenceIndex - 2).coerceAtLeast(0)
     val end = (sentenceIndex + 2).coerceAtMost(data.sentences.lastIndex)
+    val effectiveFocusColor = settings.effectiveFocusColor
     Column(
         modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.Center
@@ -579,7 +584,7 @@ private fun ContextWindow(
             val sentence = data.sentences[i]
             val current = i == sentenceIndex
             val token = if (current) data.tokens.getOrNull(currentGlobalToken) else null
-            val annotated = remember(sentence.text, token?.globalIndex, settings.focusColorArgb) {
+            val annotated = remember(sentence.text, token?.globalIndex, effectiveFocusColor) {
                 AnnotatedString.Builder(sentence.text).apply {
                     if (current && token != null) {
                         val localStart = (token.start - sentence.start).coerceIn(0, sentence.text.length)
@@ -587,7 +592,7 @@ private fun ContextWindow(
                         if (localEnd > localStart) {
                             addStyle(
                                 SpanStyle(
-                                    background = settings.focusColor.copy(alpha = 0.28f),
+                                    background = effectiveFocusColor.copy(alpha = if (settings.darkMode) 0.34f else 0.28f),
                                     fontWeight = FontWeight.SemiBold
                                 ),
                                 localStart,
@@ -730,7 +735,7 @@ private fun FocusToken(
     val focusRange = remember(text) { TextProcessor.focusGraphemeRange(text) }
     val baseColor = MaterialTheme.colorScheme.onSurface
     val neighborColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
-    val focusColor = if (settings.showFocusColor) settings.focusColor else baseColor
+    val focusColor = if (settings.showFocusColor) settings.effectiveFocusColor else baseColor
     val annotated = remember(text, focusRange, focusColor) {
         AnnotatedString.Builder(text).apply {
             if (focusRange != null) addStyle(SpanStyle(color = focusColor, fontWeight = FontWeight.Bold), focusRange.first, focusRange.last + 1)

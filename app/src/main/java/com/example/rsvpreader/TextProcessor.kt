@@ -10,9 +10,10 @@ object TextProcessor {
     )
 
     private val connectorChars = setOf(
-        ',', '，', '、', 'ㆍ', '·', '-', '‐', '‑', '‒', '–', '—', '~', '～', ':', ';', '：', '；'
+        ',', '，', '、', 'ㆍ', '·', '-', '‐', '‑', '‒', '–', '—', '~', '～', ':', ';', '：', '；',
+        '…', '/', '／'
     )
-    private val weakPauseChars = setOf(',', '，', '、', 'ㆍ', '·', ':', ';', '：', '；')
+    private val weakPauseChars = setOf(',', '，', '、', 'ㆍ', '·', ':', ';', '：', '；', '…')
     private val strongPauseChars = setOf('.', '。', '?', '？', '!', '！')
     private val openingChars = setOf('(', '[', '{', '〈', '《', '「', '『', '【', '〔', '“', '‘', '"', '\'', '<')
     private val closingChars = setOf(')', ']', '}', '〉', '》', '」', '』', '】', '〕', '”', '’', '"', '\'', '>')
@@ -165,7 +166,8 @@ object TextProcessor {
                     val p = sentence.getOrNull(j - 1)
                     val n = sentence.getOrNull(j + 1)
                     if (c.isDigit() || (c == ',' && p?.isDigit() == true && n?.isDigit() == true) ||
-                        (c == '.' && p?.isDigit() == true && n?.isDigit() == true)) {
+                        (c == '.' && p?.isDigit() == true && n?.isDigit() == true) ||
+                        ((c == '/' || c == '／') && p?.isDigit() == true && n?.isDigit() == true)) {
                         j++
                     } else break
                 }

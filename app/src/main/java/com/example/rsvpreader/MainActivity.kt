@@ -17,6 +17,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.view.WindowCompat
 
@@ -44,6 +45,34 @@ fun RSVPReaderApp() {
     var exitDialog by remember { mutableStateOf(false) }
 
     val useDark = settings.darkMode
+    val lightBackground = if (settings.lightBackground == LightBackground.WARM) {
+        Color(0xFFFFF7E6)
+    } else {
+        Color.White
+    }
+    val colorScheme = if (useDark) {
+        darkColorScheme(
+            primary = settings.effectiveFocusColor,
+            background = Color(0xFF121212),
+            onBackground = Color(0xFFF2F2F2),
+            surface = Color(0xFF171717),
+            onSurface = Color(0xFFF2F2F2),
+            surfaceVariant = Color(0xFF2A2A2A),
+            onSurfaceVariant = Color(0xFFCACACA),
+            outline = Color(0xFF8A8A8A)
+        )
+    } else {
+        lightColorScheme(
+            primary = settings.focusColor,
+            background = lightBackground,
+            onBackground = Color(0xFF202020),
+            surface = lightBackground,
+            onSurface = Color(0xFF202020),
+            surfaceVariant = if (settings.lightBackground == LightBackground.WARM) Color(0xFFF1E8D3) else Color(0xFFF2F2F2),
+            onSurfaceVariant = Color(0xFF5F5F5F),
+            outline = Color(0xFF777777)
+        )
+    }
     SideEffect {
         (context as? Activity)?.let { activity ->
             WindowCompat.getInsetsController(activity.window, activity.window.decorView).apply {
@@ -52,7 +81,7 @@ fun RSVPReaderApp() {
             }
         }
     }
-    MaterialTheme(colorScheme = if (useDark) darkColorScheme() else lightColorScheme()) {
+    MaterialTheme(colorScheme = colorScheme) {
         when (val s = screen) {
             AppScreen.Library -> {
                 BackHandler { exitDialog = true }

@@ -1,8 +1,11 @@
 package com.example.rsvpreader
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 
 enum class SourceType { PASTE, TXT, PDF, EPUB }
+
+enum class LightBackground { WHITE, WARM }
 
 data class DocumentEntry(
     val id: String,
@@ -59,6 +62,7 @@ data class AppSettings(
     val contextFontSp: Float = 20f,
     val rsvpFontSp: Float = 46f,
     val darkMode: Boolean = false,
+    val lightBackground: LightBackground = LightBackground.WHITE,
     val punctuationDelay: Boolean = true,
     val longWordDelay: Boolean = false,
     val ttsRate: Float = 1.0f,
@@ -68,6 +72,25 @@ data class AppSettings(
     val rsvpAtTop: Boolean = false
 ) {
     val focusColor: Color get() = Color(focusColorArgb.toInt())
+    val effectiveFocusColor: Color get() = if (darkMode) adaptFocusColorForDark(focusColor) else focusColor
+}
+
+private val darkReaderBackground = Color(0xFF121212)
+
+private fun adaptFocusColorForDark(base: Color): Color {
+    var candidate = base
+    repeat(8) {
+        val lighter = maxOf(candidate.luminance(), darkReaderBackground.luminance())
+        val darker = minOf(candidate.luminance(), darkReaderBackground.luminance())
+        if ((lighter + 0.05f) / (darker + 0.05f) >= 4.5f) return candidate
+        candidate = Color(
+            red = candidate.red + (1f - candidate.red) * 0.14f,
+            green = candidate.green + (1f - candidate.green) * 0.14f,
+            blue = candidate.blue + (1f - candidate.blue) * 0.14f,
+            alpha = candidate.alpha
+        )
+    }
+    return candidate
 }
 
 sealed interface ImportResult {
