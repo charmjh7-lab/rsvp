@@ -62,6 +62,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
@@ -84,6 +85,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import java.util.Locale
 
@@ -409,6 +411,7 @@ fun ReaderScreen(
                 data = data,
                 currentSentenceIndex = currentSentenceIndex,
                 fontSize = settings.contextFontSp,
+                highlightColor = settings.focusColor,
                 onClose = { fullTextOpen = false },
                 onSettings = {
                     isPlaying = false
@@ -689,12 +692,14 @@ private fun FullTextPanel(
     data: ProcessedDocument,
     currentSentenceIndex: Int,
     fontSize: Float,
+    highlightColor: Color,
     onClose: () -> Unit,
     onSettings: () -> Unit,
     onSentenceClick: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
     LaunchedEffect(currentSentenceIndex) {
         listState.scrollToItem(currentSentenceIndex.coerceIn(0, data.sentences.lastIndex))
     }
@@ -705,6 +710,13 @@ private fun FullTextPanel(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("전체 글", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            listState.animateScrollToItem(currentSentenceIndex.coerceIn(0, data.sentences.lastIndex))
+                        }
+                    }
+                ) { Text("현재 위치") }
                 IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "설정") }
                 IconButton(onClick = onClose) { Icon(Icons.Default.Close, "닫기") }
             }
@@ -718,10 +730,11 @@ private fun FullTextPanel(
                         lineHeight = (fontSize * 1.5f).sp,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(if (current) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f) else Color.Transparent)
+                            .background(if (current) highlightColor.copy(alpha = 0.20f) else Color.Transparent)
                             .clickable { onSentenceClick(i) }
                             .padding(horizontal = 18.dp, vertical = 10.dp),
-                        color = if (current) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                        color = if (current) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal
                     )
                 }
             }
