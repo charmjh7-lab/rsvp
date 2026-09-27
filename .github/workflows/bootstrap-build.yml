@@ -30,11 +30,11 @@ jobs:
       - name: Commit generated launcher foreground
         shell: bash
         run: |
-          if ! git diff --quiet -- app/src/main/res/drawable-nodpi/ic_launcher_foreground_bitmap.webp; then
+          if ! git diff --quiet -- app/src/main/res/drawable-nodpi/ic_launcher_foreground_bitmap.png; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add app/src/main/res/drawable-nodpi/ic_launcher_foreground_bitmap.webp
-            git commit -m "Generate adaptive launcher foreground"
+            git add app/src/main/res/drawable-nodpi/ic_launcher_foreground_bitmap.png
+            git commit -m "Generate PNG adaptive launcher foreground"
             git push origin HEAD:main
           fi
 

@@ -7,7 +7,7 @@ from PIL import Image, ImageChops, ImageOps
 ROOT = Path(__file__).resolve().parents[1]
 RES = ROOT / "app" / "src" / "main" / "res"
 SOURCE = RES / "drawable-nodpi" / "ic_launcher_source.webp"
-OUTPUT = RES / "drawable-nodpi" / "ic_launcher_foreground_bitmap.webp"
+OUTPUT = RES / "drawable-nodpi" / "ic_launcher_foreground_bitmap.png"
 
 # Android adaptive icons use a 108 dp layer. At xxxhdpi, 432 px maps exactly
 # to 108 dp. Keep the entire mark, including the rear blue card, inside the
@@ -99,7 +99,7 @@ if max_radius > SAFE_RADIUS_PX:
     )
 
 OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-foreground.save(OUTPUT, "WEBP", lossless=True, method=6)
+foreground.save(OUTPUT, "PNG", optimize=True)
 
 visible_bounds = alpha.getbbox()
 print(
