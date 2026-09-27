@@ -90,7 +90,7 @@ fun SettingsScreen(settings: AppSettings, onChange: (AppSettings) -> Unit, onBac
         Column(
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp)
         ) {
-            SectionTitle("집중 글자")
+            SectionTitle("화면")
             SettingSwitch("집중 글자 색상 표시", settings.showFocusColor) { onChange(settings.copy(showFocusColor = it)) }
             Text("집중색", style = MaterialTheme.typography.labelLarge)
             Spacer(Modifier.height(10.dp))
@@ -108,6 +108,41 @@ fun SettingsScreen(settings: AppSettings, onChange: (AppSettings) -> Unit, onBac
                     )
                 }
             }
+            Spacer(Modifier.height(18.dp))
+            SettingPicker(
+                label = "RSVP 단어 표시 위치",
+                selectedLabel = if (settings.rsvpAtTop) "상단" else "하단",
+                choices = listOf(
+                    SettingChoice("top", "상단"),
+                    SettingChoice("bottom", "하단")
+                ),
+                onSelect = { position ->
+                    onChange(settings.copy(rsvpAtTop = position == "top"))
+                }
+            )
+            Spacer(Modifier.height(12.dp))
+            SettingPicker(
+                label = "밝은 모드 배경색",
+                selectedLabel = if (settings.lightBackground == LightBackground.WHITE) "흰색" else "따뜻한 크림색",
+                choices = listOf(
+                    SettingChoice("white", "흰색"),
+                    SettingChoice("warm", "따뜻한 크림색")
+                ),
+                onSelect = { background ->
+                    onChange(
+                        settings.copy(
+                            lightBackground = if (background == "warm") LightBackground.WARM else LightBackground.WHITE
+                        )
+                    )
+                }
+            )
+            Text(
+                "다크 모드에서는 선택값을 유지한 채 어두운 배경을 사용합니다.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(12.dp))
+            SettingSwitch("다크 모드", settings.darkMode) { onChange(settings.copy(darkMode = it)) }
 
             Spacer(Modifier.height(24.dp))
             HorizontalDivider()
@@ -219,44 +254,6 @@ fun SettingsScreen(settings: AppSettings, onChange: (AppSettings) -> Unit, onBac
                 )
             }
 
-            Spacer(Modifier.height(18.dp))
-            HorizontalDivider()
-            Spacer(Modifier.height(20.dp))
-            SectionTitle("화면")
-            SettingPicker(
-                label = "RSVP 단어 표시 위치",
-                selectedLabel = if (settings.rsvpAtTop) "상단" else "하단",
-                choices = listOf(
-                    SettingChoice("top", "상단"),
-                    SettingChoice("bottom", "하단")
-                ),
-                onSelect = { position ->
-                    onChange(settings.copy(rsvpAtTop = position == "top"))
-                }
-            )
-            Spacer(Modifier.height(12.dp))
-            SettingPicker(
-                label = "밝은 모드 배경색",
-                selectedLabel = if (settings.lightBackground == LightBackground.WHITE) "흰색" else "따뜻한 크림색",
-                choices = listOf(
-                    SettingChoice("white", "흰색"),
-                    SettingChoice("warm", "따뜻한 크림색")
-                ),
-                onSelect = { background ->
-                    onChange(
-                        settings.copy(
-                            lightBackground = if (background == "warm") LightBackground.WARM else LightBackground.WHITE
-                        )
-                    )
-                }
-            )
-            Text(
-                "다크 모드에서는 선택값을 유지한 채 어두운 배경을 사용합니다.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.height(12.dp))
-            SettingSwitch("다크 모드", settings.darkMode) { onChange(settings.copy(darkMode = it)) }
             Spacer(Modifier.height(24.dp))
         }
     }

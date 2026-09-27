@@ -657,6 +657,9 @@ private fun PlaybackControls(
     onNext: () -> Unit,
     onNextSentence: () -> Unit
 ) {
+    val navigationIconColor = MaterialTheme.colorScheme.onSurface
+    val disabledNavigationIconColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -673,7 +676,8 @@ private fun PlaybackControls(
             Icon(
                 Icons.Default.FastRewind,
                 "이전 문장",
-                modifier = Modifier.size(29.dp)
+                modifier = Modifier.size(29.dp),
+                tint = if (canPreviousSentence) navigationIconColor else disabledNavigationIconColor
             )
         }
         IconButton(
@@ -684,7 +688,8 @@ private fun PlaybackControls(
             Icon(
                 Icons.Default.ArrowLeft,
                 "이전 토큰",
-                modifier = Modifier.size(30.dp)
+                modifier = Modifier.size(30.dp),
+                tint = if (canPrevious) navigationIconColor else disabledNavigationIconColor
             )
         }
         Surface(shape = RoundedCornerShape(50), tonalElevation = 4.dp) {
@@ -707,7 +712,8 @@ private fun PlaybackControls(
             Icon(
                 Icons.Default.ArrowRight,
                 "다음 토큰",
-                modifier = Modifier.size(30.dp)
+                modifier = Modifier.size(30.dp),
+                tint = if (canNext) navigationIconColor else disabledNavigationIconColor
             )
         }
         IconButton(
@@ -718,7 +724,8 @@ private fun PlaybackControls(
             Icon(
                 Icons.Default.FastForward,
                 "다음 문장",
-                modifier = Modifier.size(29.dp)
+                modifier = Modifier.size(29.dp),
+                tint = if (canNextSentence) navigationIconColor else disabledNavigationIconColor
             )
         }
     }
