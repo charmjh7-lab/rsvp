@@ -1,13 +1,9 @@
 package com.example.rsvpreader
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -149,7 +145,6 @@ fun ReaderScreen(
     }
 
     fun moveTo(index: Int) {
-        isPlaying = false
         currentIndex = index.coerceIn(0, data.tokens.lastIndex)
     }
 
@@ -195,15 +190,10 @@ fun ReaderScreen(
             )
             LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().height(3.dp))
 
-            AnimatedContent(
-                targetState = currentSentenceIndex,
-                transitionSpec = { fadeIn() togetherWith fadeOut() },
-                label = "context",
-                modifier = Modifier.weight(1f).fillMaxWidth()
-            ) { sentenceIndex ->
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 ContextWindow(
                     data = data,
-                    sentenceIndex = sentenceIndex,
+                    sentenceIndex = currentSentenceIndex,
                     currentGlobalToken = currentIndex,
                     settings = settings,
                     onSentenceClick = { selected ->

@@ -1,7 +1,16 @@
+import java.util.Base64
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+}
+
+val signingSource = rootProject.file("signing/rsvp-update-key.b64")
+val persistentKeystore = layout.buildDirectory.file("generated-signing/rsvp-update.jks").get().asFile
+if (signingSource.exists()) {
+    persistentKeystore.parentFile.mkdirs()
+    persistentKeystore.writeBytes(Base64.getMimeDecoder().decode(signingSource.readText().trim()))
 }
 
 android {
@@ -12,11 +21,23 @@ android {
         applicationId = "com.example.rsvpreader"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.0.1"
+    }
+
+    signingConfigs {
+        create("persistentDebug") {
+            storeFile = persistentKeystore
+            storePassword = "rsvpreader2026"
+            keyAlias = "rsvpupdate"
+            keyPassword = "rsvpreader2026"
+        }
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("persistentDebug")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")

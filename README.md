@@ -53,3 +53,10 @@ GitHub Actions의 `.github/workflows/android-debug-apk.yml`에서도 `assembleDe
 ## 의도적으로 제외한 기능
 
 OCR, 클라우드 동기화, 메모, TTS, 밑줄/주석 등은 첫 버전 핵심 읽기 경험과 위치 동기화를 우선하기 위해 포함하지 않았습니다.
+
+
+## Update signing
+
+Starting with version 1.0.1, debug APKs are signed with the repository's dedicated development update key so future debug APKs can be installed as updates over this version. This key is for development builds only and must not be reused for production distribution.
+
+The earlier 1.0.0 artifact was signed by an ephemeral GitHub-hosted runner debug key. Its private key no longer exists, so Android cannot accept 1.0.1 as an in-place update over that exact APK. If 1.0.0 is already installed, uninstall it once before installing 1.0.1. Builds after 1.0.1 retain the same signing identity.
