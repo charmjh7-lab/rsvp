@@ -343,21 +343,11 @@ fun ReaderScreen(
             }
 
             if (settings.rsvpAtTop) {
-                RSVPControls(
+                RSVPWordDisplay(
+                    previousToken = data.tokens.getOrNull(currentIndex - 1)?.display,
                     token = currentToken,
-                    settings = settings,
-                    isPlaying = isPlaying,
-                    canPrevious = currentIndex > 0,
-                    canNext = currentIndex < data.tokens.lastIndex,
-                    onPrevious = { moveTo(currentIndex - 1) },
-                    onPlayPause = { togglePlayback() },
-                    onNext = { moveTo(currentIndex + 1) }
-                )
-                Text(
-                    "${(progress * 100).roundToInt()}%",
-                    modifier = Modifier.align(Alignment.End).padding(end = 12.dp, bottom = 6.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    nextToken = data.tokens.getOrNull(currentIndex + 1)?.display,
+                    settings = settings
                 )
                 HorizontalDivider()
             }
@@ -377,23 +367,36 @@ fun ReaderScreen(
 
             if (!settings.rsvpAtTop) {
                 HorizontalDivider()
-                RSVPControls(
+                RSVPWordDisplay(
+                    previousToken = data.tokens.getOrNull(currentIndex - 1)?.display,
                     token = currentToken,
-                    settings = settings,
-                    isPlaying = isPlaying,
-                    canPrevious = currentIndex > 0,
-                    canNext = currentIndex < data.tokens.lastIndex,
-                    onPrevious = { moveTo(currentIndex - 1) },
-                    onPlayPause = { togglePlayback() },
-                    onNext = { moveTo(currentIndex + 1) }
-                )
-                Text(
-                    "${(progress * 100).roundToInt()}%",
-                    modifier = Modifier.align(Alignment.End).padding(end = 12.dp, bottom = 6.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    nextToken = data.tokens.getOrNull(currentIndex + 1)?.display,
+                    settings = settings
                 )
             }
+
+            PlaybackControls(
+                isPlaying = isPlaying,
+                canPrevious = currentIndex > 0,
+                canNext = currentIndex < data.tokens.lastIndex,
+                onPrevious = { moveTo(currentIndex - 1) },
+                onPlayPause = { togglePlayback() },
+                onNext = { moveTo(currentIndex + 1) }
+            )
+            Text(
+                "${(progress * 100).roundToInt()}%",
+                modifier = Modifier.align(Alignment.End).padding(end = 12.dp, bottom = 6.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        if (fullTextOpen) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable { fullTextOpen = false }
+            )
         }
 
         AnimatedVisibility(
@@ -556,9 +559,27 @@ private fun ContextWindow(
 }
 
 @Composable
-private fun RSVPControls(
+private fun RSVPWordDisplay(
+    previousToken: String?,
     token: RsvpToken,
-    settings: AppSettings,
+    nextToken: String?,
+    settings: AppSettings
+) {
+    Box(
+        modifier = Modifier.fillMaxWidth().height(118.dp).padding(horizontal = 12.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        FocusToken(
+            previousText = previousToken,
+            text = token.display,
+            nextText = nextToken,
+            settings = settings
+        )
+    }
+}
+
+@Composable
+private fun PlaybackControls(
     isPlaying: Boolean,
     canPrevious: Boolean,
     canNext: Boolean,
@@ -566,13 +587,11 @@ private fun RSVPControls(
     onPlayPause: () -> Unit,
     onNext: () -> Unit
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth().height(220.dp).padding(horizontal = 12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+    Row(
+        modifier = Modifier.fillMaxWidth().height(72.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        FocusToken(token.display, settings)
-        Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onPrevious, enabled = canPrevious) { Icon(Icons.Default.ArrowLeft, "이전 토큰") }
             Surface(shape = RoundedCornerShape(50), tonalElevation = 3.dp) {
@@ -584,33 +603,84 @@ private fun RSVPControls(
 }
 
 @Composable
-private fun FocusToken(text: String, settings: AppSettings) {
+private fun FocusToken(
+    previousText: String?,
+    text: String,
+    nextText: String?,
+    settings: AppSettings
+) {
     val measurer = rememberTextMeasurer()
     val focusRange = remember(text) { TextProcessor.focusGraphemeRange(text) }
     val baseColor = MaterialTheme.colorScheme.onSurface
+    val neighborColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
     val focusColor = if (settings.showFocusColor) settings.focusColor else baseColor
     val annotated = remember(text, focusRange, focusColor) {
         AnnotatedString.Builder(text).apply {
             if (focusRange != null) addStyle(SpanStyle(color = focusColor, fontWeight = FontWeight.Bold), focusRange.first, focusRange.last + 1)
         }.toAnnotatedString()
     }
-    val result = remember(annotated, settings.rsvpFontSp, baseColor) {
+    val currentResult = remember(annotated, settings.rsvpFontSp, baseColor) {
         measurer.measure(
             text = annotated,
             style = TextStyle(fontSize = settings.rsvpFontSp.sp, color = baseColor, fontWeight = FontWeight.Medium)
         )
     }
+    val neighborFontSp = settings.rsvpFontSp * 0.62f
+    val previousResult = remember(previousText, neighborFontSp, neighborColor) {
+        previousText?.let {
+            measurer.measure(
+                text = AnnotatedString(it),
+                style = TextStyle(fontSize = neighborFontSp.sp, color = neighborColor, fontWeight = FontWeight.Normal)
+            )
+        }
+    }
+    val nextResult = remember(nextText, neighborFontSp, neighborColor) {
+        nextText?.let {
+            measurer.measure(
+                text = AnnotatedString(it),
+                style = TextStyle(fontSize = neighborFontSp.sp, color = neighborColor, fontWeight = FontWeight.Normal)
+            )
+        }
+    }
+
     Canvas(Modifier.fillMaxWidth().height(94.dp)) {
         val focusCenter = if (focusRange != null && text.isNotEmpty()) {
-            val first = result.getBoundingBox(focusRange.first)
-            val lastOffset = (focusRange.last).coerceAtMost(text.lastIndex)
-            val last = result.getBoundingBox(lastOffset)
+            val first = currentResult.getBoundingBox(focusRange.first)
+            val lastOffset = focusRange.last.coerceAtMost(text.lastIndex)
+            val last = currentResult.getBoundingBox(lastOffset)
             (first.left + last.right) / 2f
-        } else result.size.width / 2f
+        } else {
+            currentResult.size.width / 2f
+        }
+
+        val currentX = size.width / 2f - focusCenter
+        val currentY = (size.height - currentResult.size.height) / 2f
+        val gap = 22.dp.toPx()
+
+        previousResult?.let { previous ->
+            drawText(
+                textLayoutResult = previous,
+                topLeft = Offset(
+                    x = currentX - gap - previous.size.width,
+                    y = (size.height - previous.size.height) / 2f
+                )
+            )
+        }
+
         drawText(
-            textLayoutResult = result,
-            topLeft = Offset(size.width / 2f - focusCenter, (size.height - result.size.height) / 2f)
+            textLayoutResult = currentResult,
+            topLeft = Offset(currentX, currentY)
         )
+
+        nextResult?.let { next ->
+            drawText(
+                textLayoutResult = next,
+                topLeft = Offset(
+                    x = currentX + currentResult.size.width + gap,
+                    y = (size.height - next.size.height) / 2f
+                )
+            )
+        }
     }
 }
 

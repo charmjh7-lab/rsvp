@@ -224,7 +224,7 @@ fun SettingsScreen(settings: AppSettings, onChange: (AppSettings) -> Unit, onBac
             Spacer(Modifier.height(20.dp))
             SectionTitle("화면")
             SettingPicker(
-                label = "RSVP 영역 위치",
+                label = "RSVP 단어 표시 위치",
                 selectedLabel = if (settings.rsvpAtTop) "상단" else "하단",
                 choices = listOf(
                     SettingChoice("top", "상단"),
