@@ -106,6 +106,7 @@ fun ReaderScreen(
     var isPlaying by remember { mutableStateOf(false) }
     var speedDialog by remember { mutableStateOf(false) }
     var fullTextOpen by remember { mutableStateOf(false) }
+    var fullTextWasPlaying by remember { mutableStateOf(false) }
     var ttsMode by remember(documentId) { mutableStateOf(settings.lastTtsMode) }
     var ttsReady by remember(documentId) { mutableStateOf(false) }
     var ttsNotice by remember(documentId) { mutableStateOf<String?>(null) }
@@ -249,6 +250,26 @@ fun ReaderScreen(
         }
     }
 
+    fun moveToAndPlay(index: Int) {
+        val target = index.coerceIn(0, data.tokens.lastIndex)
+        ttsController.stop()
+        currentIndex = target
+        if (ttsMode) {
+            if (!ttsReady) {
+                isPlaying = false
+                ttsNotice = "TTS를 준비하는 중이거나 사용할 수 없습니다."
+            } else if (startTtsAt(target)) {
+                ttsNotice = null
+                isPlaying = true
+            } else {
+                isPlaying = false
+                ttsNotice = "현재 위치에서 TTS를 시작하지 못했습니다."
+            }
+        } else {
+            isPlaying = true
+        }
+    }
+
     fun togglePlayback() {
         if (isPlaying) {
             isPlaying = false
@@ -278,7 +299,10 @@ fun ReaderScreen(
         if (currentIndex < data.tokens.lastIndex) currentIndex++ else isPlaying = false
     }
 
-    BackHandler(enabled = fullTextOpen) { fullTextOpen = false }
+    BackHandler(enabled = fullTextOpen) {
+        fullTextOpen = false
+        fullTextWasPlaying = false
+    }
     BackHandler(enabled = speedDialog) { speedDialog = false }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -328,6 +352,7 @@ fun ReaderScreen(
                         )
                     }
                     IconButton(onClick = {
+                        fullTextWasPlaying = isPlaying
                         isPlaying = false
                         ttsController.stop()
                         fullTextOpen = true
@@ -362,7 +387,7 @@ fun ReaderScreen(
                     settings = settings,
                     onSentenceClick = { selected ->
                         val sentence = data.sentences[selected]
-                        if (sentence.tokenCount > 0) moveTo(sentence.tokenStartGlobal)
+                        if (sentence.tokenCount > 0) moveToAndPlay(sentence.tokenStartGlobal)
                     }
                 )
             }
@@ -379,11 +404,23 @@ fun ReaderScreen(
 
             PlaybackControls(
                 isPlaying = isPlaying,
+                canPreviousSentence = currentSentenceIndex > 0,
                 canPrevious = currentIndex > 0,
                 canNext = currentIndex < data.tokens.lastIndex,
+                canNextSentence = currentSentenceIndex < data.sentences.lastIndex,
+                onPreviousSentence = {
+                    data.sentences.getOrNull(currentSentenceIndex - 1)
+                        ?.takeIf { it.tokenCount > 0 }
+                        ?.let { moveTo(it.tokenStartGlobal) }
+                },
                 onPrevious = { moveTo(currentIndex - 1) },
                 onPlayPause = { togglePlayback() },
-                onNext = { moveTo(currentIndex + 1) }
+                onNext = { moveTo(currentIndex + 1) },
+                onNextSentence = {
+                    data.sentences.getOrNull(currentSentenceIndex + 1)
+                        ?.takeIf { it.tokenCount > 0 }
+                        ?.let { moveTo(it.tokenStartGlobal) }
+                }
             )
             Text(
                 "${(progress * 100).roundToInt()}%",
@@ -397,7 +434,10 @@ fun ReaderScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .clickable { fullTextOpen = false }
+                    .clickable {
+                        fullTextOpen = false
+                        fullTextWasPlaying = false
+                    }
             )
         }
 
@@ -412,7 +452,10 @@ fun ReaderScreen(
                 currentSentenceIndex = currentSentenceIndex,
                 fontSize = settings.contextFontSp,
                 highlightColor = settings.focusColor,
-                onClose = { fullTextOpen = false },
+                onClose = {
+                    fullTextOpen = false
+                    fullTextWasPlaying = false
+                },
                 onSettings = {
                     isPlaying = false
                     ttsController.stop()
@@ -422,10 +465,21 @@ fun ReaderScreen(
                 },
                 onSentenceClick = { sentenceIndex ->
                     val sentence = data.sentences[sentenceIndex]
-                    ttsController.stop()
-                    if (sentence.tokenCount > 0) currentIndex = sentence.tokenStartGlobal
-                    isPlaying = false
-                    fullTextOpen = false
+                    if (sentence.tokenCount > 0) {
+                        val shouldResume = fullTextWasPlaying
+                        fullTextWasPlaying = false
+                        fullTextOpen = false
+                        if (shouldResume) {
+                            moveToAndPlay(sentence.tokenStartGlobal)
+                        } else {
+                            ttsController.stop()
+                            isPlaying = false
+                            currentIndex = sentence.tokenStartGlobal
+                        }
+                    } else {
+                        fullTextWasPlaying = false
+                        fullTextOpen = false
+                    }
                 },
                 modifier = Modifier
                     .width(maxWidth * 0.86f)
@@ -584,23 +638,40 @@ private fun RSVPWordDisplay(
 @Composable
 private fun PlaybackControls(
     isPlaying: Boolean,
+    canPreviousSentence: Boolean,
     canPrevious: Boolean,
     canNext: Boolean,
+    canNextSentence: Boolean,
+    onPreviousSentence: () -> Unit,
     onPrevious: () -> Unit,
     onPlayPause: () -> Unit,
-    onNext: () -> Unit
+    onNext: () -> Unit,
+    onNextSentence: () -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().height(72.dp),
-        horizontalArrangement = Arrangement.Center,
+        modifier = Modifier.fillMaxWidth().height(72.dp).padding(horizontal = 6.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onPrevious, enabled = canPrevious) { Icon(Icons.Default.ArrowLeft, "이전 토큰") }
-            Surface(shape = RoundedCornerShape(50), tonalElevation = 3.dp) {
-                IconButton(onClick = onPlayPause) { Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, if (isPlaying) "일시정지" else "재생") }
+        TextButton(onClick = onPreviousSentence, enabled = canPreviousSentence) {
+            Text("‹ 문장")
+        }
+        IconButton(onClick = onPrevious, enabled = canPrevious) {
+            Icon(Icons.Default.ArrowLeft, "이전 토큰")
+        }
+        Surface(shape = RoundedCornerShape(50), tonalElevation = 3.dp) {
+            IconButton(onClick = onPlayPause) {
+                Icon(
+                    if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    if (isPlaying) "일시정지" else "재생"
+                )
             }
-            IconButton(onClick = onNext, enabled = canNext) { Icon(Icons.Default.ArrowRight, "다음 토큰") }
+        }
+        IconButton(onClick = onNext, enabled = canNext) {
+            Icon(Icons.Default.ArrowRight, "다음 토큰")
+        }
+        TextButton(onClick = onNextSentence, enabled = canNextSentence) {
+            Text("문장 ›")
         }
     }
 }
