@@ -220,6 +220,20 @@ class FileImporter(private val context: Context) {
         return ExtractedBody(text, toc)
     }
 
+    private fun readZipEntry(uri: Uri, targetPath: String): ByteArray? {
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            ZipInputStream(input).use { zip ->
+                var entry = zip.nextEntry
+                while (entry != null) {
+                    if (!entry.isDirectory && entry.name == targetPath) return zip.readBytes()
+                    zip.closeEntry()
+                    entry = zip.nextEntry
+                }
+            }
+        } ?: error("EPUB 파일을 열 수 없습니다.")
+        return null
+    }
+
     private fun parseXml(bytes: ByteArray) = DocumentBuilderFactory.newInstance().apply {
         isNamespaceAware = false
     }.newDocumentBuilder().parse(ByteArrayInputStream(bytes))
