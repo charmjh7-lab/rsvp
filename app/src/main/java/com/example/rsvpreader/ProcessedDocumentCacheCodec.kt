@@ -5,13 +5,19 @@ import java.io.DataOutput
 
 object ProcessedDocumentCacheCodec {
     private const val MAGIC = 0x52535650
-    const val VERSION = 1
+    const val VERSION = 2
     private const val MAX_SENTENCES = 2_000_000
     private const val MAX_TOKENS = 10_000_000
 
-    fun write(output: DataOutput, processed: ProcessedDocument, contentHash: String) {
+    fun write(
+        output: DataOutput,
+        processed: ProcessedDocument,
+        contentHash: String,
+        processingSchemaVersion: Int = TextProcessor.PROCESSING_SCHEMA_VERSION
+    ) {
         output.writeInt(MAGIC)
         output.writeInt(VERSION)
+        output.writeInt(processingSchemaVersion)
         output.writeUTF(contentHash)
 
         output.writeInt(processed.sentences.size)
@@ -35,10 +41,16 @@ object ProcessedDocumentCacheCodec {
         }
     }
 
-    fun read(input: DataInput, normalizedText: String, expectedContentHash: String): ProcessedDocument? =
+    fun read(
+        input: DataInput,
+        normalizedText: String,
+        expectedContentHash: String,
+        expectedProcessingSchemaVersion: Int = TextProcessor.PROCESSING_SCHEMA_VERSION
+    ): ProcessedDocument? =
         runCatching {
             if (input.readInt() != MAGIC) return null
             if (input.readInt() != VERSION) return null
+            if (input.readInt() != expectedProcessingSchemaVersion) return null
             if (input.readUTF() != expectedContentHash) return null
 
             val sentenceCount = input.readInt()

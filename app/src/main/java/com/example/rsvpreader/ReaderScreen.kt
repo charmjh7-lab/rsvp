@@ -70,6 +70,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
@@ -108,15 +109,19 @@ import java.util.Locale
 fun ReaderScreen(
     documentId: String,
     store: DocumentStore,
+    sessionHolder: ReaderSessionHolder,
     settings: AppSettings,
     onSettingsChange: (AppSettings) -> Unit,
     onOpenSettings: () -> Unit,
     onBack: () -> Unit
 ) {
+    val initialSession = remember(documentId) { sessionHolder.snapshot(documentId) }
     var document by remember(documentId) { mutableStateOf(store.getDocument(documentId)) }
-    var processed by remember(documentId) { mutableStateOf<ProcessedDocument?>(null) }
+    var processed by remember(documentId) { mutableStateOf(initialSession?.processed) }
     var loadError by remember(documentId) { mutableStateOf<String?>(null) }
-    var currentIndex by remember(documentId) { mutableIntStateOf(document?.globalTokenIndex ?: 0) }
+    var currentIndex by remember(documentId) {
+        mutableIntStateOf(initialSession?.globalTokenIndex ?: document?.globalTokenIndex ?: 0)
+    }
     var isPlaying by remember { mutableStateOf(false) }
     var speedDialog by remember { mutableStateOf(false) }
     var fullTextOpen by remember { mutableStateOf(false) }
@@ -137,14 +142,54 @@ fun ReaderScreen(
     }
 
     LaunchedEffect(documentId) {
-        val result = withContext(Dispatchers.IO) { store.loadProcessed(documentId) }
-        if (result == null) {
+        if (processed != null) return@LaunchedEffect
+
+        val memoryResult = store.getMemoryProcessed(documentId)
+        if (memoryResult != null) {
+            val targetIndex = (document?.globalTokenIndex ?: 0)
+                .coerceIn(0, memoryResult.tokens.lastIndex)
+            processed = memoryResult
+            currentIndex = targetIndex
+            sessionHolder.update(documentId, memoryResult, targetIndex)
+            return@LaunchedEffect
+        }
+
+        val files = withContext(Dispatchers.IO) {
+            store.loadProcessedFiles(documentId)
+        }
+        if (files == null) {
             loadError = "저장된 문서 본문을 찾지 못했습니다."
-        } else if (result.tokens.isEmpty()) {
-            loadError = "읽을 수 있는 텍스트가 없습니다."
+            return@LaunchedEffect
+        }
+
+        val cached = if (files.cacheBytes != null) {
+            withContext(Dispatchers.Default) {
+                store.decodeProcessedCache(files)
+            }
         } else {
-            processed = result
-            currentIndex = (document?.globalTokenIndex ?: 0).coerceIn(0, result.tokens.lastIndex)
+            null
+        }
+
+        val result = cached ?: withContext(Dispatchers.Default) {
+            TextProcessor.process(files.text)
+        }
+
+        if (result.tokens.isEmpty()) {
+            loadError = "읽을 수 있는 텍스트가 없습니다."
+            return@LaunchedEffect
+        }
+
+        val targetIndex = (document?.globalTokenIndex ?: 0)
+            .coerceIn(0, result.tokens.lastIndex)
+        processed = result
+        currentIndex = targetIndex
+        store.rememberProcessed(documentId, result)
+        sessionHolder.update(documentId, result, targetIndex)
+
+        if (cached == null) {
+            withContext(Dispatchers.IO) {
+                store.writeProcessedCache(documentId, result, files.contentHash)
+            }
         }
     }
 
@@ -160,6 +205,10 @@ fun ReaderScreen(
             }
         }
         return
+    }
+
+    SideEffect {
+        sessionHolder.update(documentId, data, currentIndex)
     }
 
     val safeIndex = currentIndex.coerceIn(0, data.tokens.lastIndex)

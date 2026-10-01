@@ -40,4 +40,38 @@ class ProcessedDocumentCacheCodecTest {
 
         assertNull(restored)
     }
+
+    @Test
+    fun mismatchedProcessorVersionRejectsStaleCache() {
+        val processed = TextProcessor.process("프로세서 버전 테스트입니다.")
+        val bytes = ByteArrayOutputStream().also { buffer ->
+            DataOutputStream(buffer).use { output ->
+                ProcessedDocumentCacheCodec.write(
+                    output,
+                    processed,
+                    "hash",
+                    processingSchemaVersion = TextProcessor.PROCESSING_SCHEMA_VERSION - 1
+                )
+            }
+        }.toByteArray()
+
+        val restored = DataInputStream(ByteArrayInputStream(bytes)).use { input ->
+            ProcessedDocumentCacheCodec.read(input, processed.normalizedText, "hash")
+        }
+
+        assertNull(restored)
+    }
+
+    @Test
+    fun corruptedCacheReturnsNullWithoutTouchingSourceText() {
+        val originalText = "원문은 그대로 유지되어야 합니다."
+        val corrupted = byteArrayOf(0x52, 0x53, 0x01, 0x02, 0x03)
+
+        val restored = DataInputStream(ByteArrayInputStream(corrupted)).use { input ->
+            ProcessedDocumentCacheCodec.read(input, originalText, "hash")
+        }
+
+        assertNull(restored)
+        assertEquals("원문은 그대로 유지되어야 합니다.", originalText)
+    }
 }

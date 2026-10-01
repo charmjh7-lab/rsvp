@@ -31,6 +31,10 @@ class ReaderPerformanceDiagnosticTest {
         val fileReadNs = measureNanoTime { readText = temp.readText(Charsets.UTF_8) }
         check(readText.length == text.length)
 
+        var normalized = ""
+        val normalizeNs = measureNanoTime { normalized = TextProcessor.normalize(readText) }
+        check(normalized.isNotBlank())
+
         lateinit var coldProcessed: ProcessedDocument
         val coldProcessNs = measureNanoTime { coldProcessed = TextProcessor.process(readText) }
 
@@ -66,19 +70,30 @@ class ReaderPerformanceDiagnosticTest {
         val memoryHitNs = measureNanoTime { repeat(10_000) { hit = memory["perf"] } }
         check(hit === coldProcessed)
 
+        val session = ReaderSessionHolder().apply {
+            update("perf", coldProcessed, coldProcessed.tokens.size / 2)
+        }
+        var sessionHit: ReaderSessionSnapshot? = null
+        val sessionHitNs = measureNanoTime {
+            repeat(10_000) { sessionHit = session.snapshot("perf") }
+        }
+        check(sessionHit?.processed === coldProcessed)
+
         temp.delete()
 
         fun ms(ns: Long) = ns / 1_000_000.0
         println(
-            "RSVP_PERF_BASELINE " +
+            "RSVP_PERF_OPTIMIZED " +
                 "chars=${text.length} tokens=${coldProcessed.tokens.size} sentences=${coldProcessed.sentences.size} " +
                 "metadataMs=${"%.3f".format(ms(metadataNs))} " +
                 "fileReadMs=${"%.3f".format(ms(fileReadNs))} " +
+                "normalizeMs=${"%.3f".format(ms(normalizeNs))} " +
                 "coldProcessMs=${"%.3f".format(ms(coldProcessNs))} " +
                 "warmProcessMs=${"%.3f".format(ms(warmProcessNs))} " +
                 "cacheEncodeMs=${"%.3f".format(ms(encodeNs))} " +
                 "cacheDecodeMs=${"%.3f".format(ms(decodeNs))} " +
                 "memoryHit10kMs=${"%.3f".format(ms(memoryHitNs))} " +
+                "sessionHit10kMs=${"%.3f".format(ms(sessionHitNs))} " +
                 "cacheBytes=${encoded.size}"
         )
     }

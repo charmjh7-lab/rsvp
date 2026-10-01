@@ -68,6 +68,7 @@ fun RSVPReaderApp() {
     val documentStore = remember { DocumentStore(context.applicationContext) }
     val settingsStore = remember { AppSettingsStore(context.applicationContext) }
     val importer = remember { FileImporter(context.applicationContext) }
+    val readerSessionHolder = remember { ReaderSessionHolder() }
     var settings by remember { mutableStateOf(settingsStore.load()) }
     var screen: AppScreen by rememberSaveable(stateSaver = AppScreenSaver) {
         mutableStateOf(AppScreen.Library)
@@ -118,7 +119,10 @@ fun RSVPReaderApp() {
                 LibraryScreen(
                     store = documentStore,
                     importer = importer,
-                    onOpenDocument = { screen = AppScreen.Reader(it) },
+                    onOpenDocument = {
+                        readerSessionHolder.clear()
+                        screen = AppScreen.Reader(it)
+                    },
                     onSettings = { screen = AppScreen.Settings() }
                 )
             }
@@ -137,17 +141,24 @@ fun RSVPReaderApp() {
                 )
             }
             is AppScreen.Reader -> {
-                BackHandler { screen = AppScreen.Library }
+                BackHandler {
+                    readerSessionHolder.clear(s.documentId)
+                    screen = AppScreen.Library
+                }
                 ReaderScreen(
                     documentId = s.documentId,
                     store = documentStore,
+                    sessionHolder = readerSessionHolder,
                     settings = settings,
                     onSettingsChange = {
                         settings = it
                         settingsStore.save(it)
                     },
                     onOpenSettings = { screen = AppScreen.Settings(s.documentId) },
-                    onBack = { screen = AppScreen.Library }
+                    onBack = {
+                        readerSessionHolder.clear(s.documentId)
+                        screen = AppScreen.Library
+                    }
                 )
             }
         }

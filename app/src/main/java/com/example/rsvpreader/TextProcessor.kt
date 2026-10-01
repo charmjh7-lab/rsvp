@@ -4,6 +4,16 @@ import java.text.BreakIterator
 import java.util.Locale
 
 object TextProcessor {
+    const val PROCESSING_SCHEMA_VERSION = 2
+
+    private val horizontalWhitespaceRegex = Regex("[\\t ]+")
+    private val paragraphBreakRegex = Regex(" *\\n *\\n+ *")
+    private val singleLineBreakRegex = Regex("(?<!\\n)\\n(?!\\n)")
+    private val repeatedSpaceRegex = Regex(" {2,}")
+    private val paragraphTrimRegex = Regex(" *\\n\\n *")
+    private val urlRegex = Regex("(?i)(?:https?://|www\\.)[^\\s]+")
+    private val emailRegex = Regex("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}")
+
     private val commonAbbreviations = setOf(
         "mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "vs", "etc",
         "e.g", "i.e", "u.s", "u.k", "no", "fig", "dept", "inc", "ltd", "co"
@@ -25,11 +35,18 @@ object TextProcessor {
         val sentenceRanges = splitSentences(normalized)
         val tokens = mutableListOf<RsvpToken>()
         val sentences = mutableListOf<SentenceUnit>()
+        val graphemeIterator = BreakIterator.getCharacterInstance(Locale.getDefault())
 
         sentenceRanges.forEachIndexed { sentenceIndex, range ->
             val sentenceText = normalized.substring(range.first, range.second)
             val sentenceTokenStart = tokens.size
-            val localTokens = tokenizeSentence(sentenceText, range.first, sentenceIndex, sentenceTokenStart)
+            val localTokens = tokenizeSentence(
+                sentenceText,
+                range.first,
+                sentenceIndex,
+                sentenceTokenStart,
+                graphemeIterator
+            )
             tokens += localTokens
             sentences += SentenceUnit(
                 text = sentenceText,
@@ -51,11 +68,11 @@ object TextProcessor {
             .replace('\u00A0', ' ')
 
         // EPUB/TXT paragraphs are preserved; single hard wraps (common in PDF extraction) become spaces.
-        text = text.replace(Regex("[\\t ]+"), " ")
-        text = text.replace(Regex(" *\\n *\\n+ *"), "\n\n")
-        text = text.replace(Regex("(?<!\\n)\\n(?!\\n)"), " ")
-        text = text.replace(Regex(" {2,}"), " ")
-        text = text.replace(Regex(" *\\n\\n *"), "\n\n")
+        text = text.replace(horizontalWhitespaceRegex, " ")
+        text = text.replace(paragraphBreakRegex, "\n\n")
+        text = text.replace(singleLineBreakRegex, " ")
+        text = text.replace(repeatedSpaceRegex, " ")
+        text = text.replace(paragraphTrimRegex, "\n\n")
         return text.trim()
     }
 
@@ -173,7 +190,8 @@ object TextProcessor {
         sentence: String,
         globalStart: Int,
         sentenceIndex: Int,
-        globalTokenStart: Int
+        globalTokenStart: Int,
+        graphemeIterator: BreakIterator
     ): List<RsvpToken> {
         val out = mutableListOf<RsvpToken>()
         var i = 0
@@ -185,14 +203,14 @@ object TextProcessor {
             val tokenStart = i
             val urlEnd = matchSpecial(sentence, i)
             if (urlEnd != null) {
-                addToken(out, sentence, tokenStart, urlEnd, globalStart, sentenceIndex, globalTokenStart)
+                addToken(out, sentence, tokenStart, urlEnd, globalStart, sentenceIndex, globalTokenStart, graphemeIterator)
                 i = urlEnd
                 continue
             }
 
             while (i < sentence.length && openingChars.contains(sentence[i])) i++
             if (i >= sentence.length) {
-                addToken(out, sentence, tokenStart, i, globalStart, sentenceIndex, globalTokenStart)
+                addToken(out, sentence, tokenStart, i, globalStart, sentenceIndex, globalTokenStart, graphemeIterator)
                 break
             }
 
@@ -212,7 +230,7 @@ object TextProcessor {
                 while (j < sentence.length && (sentence[j] == '%' || sentence[j].isLetter())) j++
                 while (j < sentence.length && closingChars.contains(sentence[j])) j++
                 if (j < sentence.length && (weakPauseChars.contains(sentence[j]) || strongPauseChars.contains(sentence[j]))) j++
-                addToken(out, sentence, tokenStart, j, globalStart, sentenceIndex, globalTokenStart)
+                addToken(out, sentence, tokenStart, j, globalStart, sentenceIndex, globalTokenStart, graphemeIterator)
                 i = j
                 continue
             }
@@ -260,17 +278,19 @@ object TextProcessor {
     }
 
     private fun matchSpecial(text: String, start: Int): Int? {
-        val rest = text.substring(start)
-        val url = Regex("(?i)^(?:https?://|www\\.)[^\\s]+") .find(rest)?.value
-        val email = Regex("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}").find(rest)?.value
-        val value = when {
-            url != null -> url
-            email != null -> email
-            else -> return null
-        }
-        var end = start + value.length
-        if (email != null) {
-            while (end < text.length && (connectorChars.contains(text[end]) || strongPauseChars.contains(text[end]) || closingChars.contains(text[end]))) end++
+        val urlMatch = urlRegex.matchAt(text, start)
+        val emailMatch = if (urlMatch == null) emailRegex.matchAt(text, start) else null
+        val match = urlMatch ?: emailMatch ?: return null
+        var end = match.range.last + 1
+        if (emailMatch != null) {
+            while (
+                end < text.length &&
+                (connectorChars.contains(text[end]) ||
+                    strongPauseChars.contains(text[end]) ||
+                    closingChars.contains(text[end]))
+            ) {
+                end++
+            }
         }
         return end
     }
@@ -282,12 +302,14 @@ object TextProcessor {
         localEnd: Int,
         globalStart: Int,
         sentenceIndex: Int,
-        globalTokenStart: Int
+        globalTokenStart: Int,
+        graphemeIterator: BreakIterator
     ) {
         if (localEnd <= localStart) return
         val display = sentence.substring(localStart, localEnd)
         if (display.isBlank()) return
         val indexInSentence = out.size
+        val punctuation = terminalPunctuation(display)
         out += RsvpToken(
             display = display,
             start = globalStart + localStart,
@@ -295,9 +317,9 @@ object TextProcessor {
             sentenceIndex = sentenceIndex,
             indexInSentence = indexInSentence,
             globalIndex = globalTokenStart + indexInSentence,
-            graphemeCount = graphemeCount(display),
-            weakPause = terminalPunctuation(display)?.let { weakPauseChars.contains(it) } == true,
-            strongPause = terminalPunctuation(display)?.let { strongPauseChars.contains(it) } == true
+            graphemeCount = graphemeCount(display, graphemeIterator),
+            weakPause = punctuation?.let { weakPauseChars.contains(it) } == true,
+            strongPause = punctuation?.let { strongPauseChars.contains(it) } == true
         )
     }
 
@@ -333,5 +355,12 @@ object TextProcessor {
         return ranges
     }
 
-    private fun graphemeCount(text: String): Int = graphemeRanges(text).size
+    private fun graphemeCount(text: String, iterator: BreakIterator): Int {
+        if (text.isEmpty()) return 0
+        iterator.setText(text)
+        var count = 0
+        iterator.first()
+        while (iterator.next() != BreakIterator.DONE) count++
+        return count
+    }
 }
