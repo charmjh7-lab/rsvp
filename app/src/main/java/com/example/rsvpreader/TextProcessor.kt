@@ -271,7 +271,7 @@ object TextProcessor {
             }
 
             if (j == tokenStart) j++
-            addToken(out, sentence, tokenStart, j, globalStart, sentenceIndex, globalTokenStart)
+            addToken(out, sentence, tokenStart, j, globalStart, sentenceIndex, globalTokenStart, graphemeIterator)
             i = j
         }
         return out
