@@ -57,6 +57,12 @@ android {
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
+
+    testOptions {
+        unitTests.all {
+            it.testLogging.showStandardStreams = true
+        }
+    }
 }
 
 dependencies {
