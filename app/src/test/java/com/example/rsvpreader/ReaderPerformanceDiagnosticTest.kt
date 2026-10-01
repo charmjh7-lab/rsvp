@@ -36,10 +36,10 @@ class ReaderPerformanceDiagnosticTest {
         check(normalized.isNotBlank())
 
         lateinit var coldProcessed: ProcessedDocument
-        val coldProcessNs = measureNanoTime { coldProcessed = TextProcessor.process(readText) }
+        val coldProcessNs = measureNanoTime { coldProcessed = TextProcessor.processNormalized(readText) }
 
         lateinit var warmProcessed: ProcessedDocument
-        val warmProcessNs = measureNanoTime { warmProcessed = TextProcessor.process(readText) }
+        val warmProcessNs = measureNanoTime { warmProcessed = TextProcessor.processNormalized(readText) }
         check(coldProcessed.tokens.size == warmProcessed.tokens.size)
 
         lateinit var encoded: ByteArray

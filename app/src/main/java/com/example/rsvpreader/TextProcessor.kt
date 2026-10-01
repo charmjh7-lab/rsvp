@@ -6,6 +6,11 @@ import java.util.Locale
 object TextProcessor {
     const val PROCESSING_SCHEMA_VERSION = 2
 
+    private val horizontalWhitespaceRegex = Regex("[\\t ]+")
+    private val paragraphBreakRegex = Regex(" *\\n *\\n+ *")
+    private val singleLineBreakRegex = Regex("(?<!\\n)\\n(?!\\n)")
+    private val repeatedSpaceRegex = Regex(" {2,}")
+    private val paragraphTrimRegex = Regex(" *\\n\\n *")
     private val urlRegex = Regex("(?i)(?:https?://|www\\.)[^\\s]+")
     private val emailRegex = Regex("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}")
 
@@ -23,17 +28,19 @@ object TextProcessor {
     private val openingChars = setOf('(', '[', '{', '〈', '《', '「', '『', '【', '〔', '“', '‘', '"', '\'', '<')
     private val closingChars = setOf(')', ']', '}', '〉', '》', '」', '』', '】', '〕', '”', '’', '"', '\'', '>')
 
-    fun process(rawText: String): ProcessedDocument {
-        val normalized = normalize(rawText)
-        if (normalized.isBlank()) return ProcessedDocument("", emptyList(), emptyList())
+    fun process(rawText: String): ProcessedDocument =
+        processNormalized(normalize(rawText))
 
-        val sentenceRanges = splitSentences(normalized)
+    fun processNormalized(normalizedText: String): ProcessedDocument {
+        if (normalizedText.isBlank()) return ProcessedDocument("", emptyList(), emptyList())
+
+        val sentenceRanges = splitSentences(normalizedText)
         val tokens = mutableListOf<RsvpToken>()
         val sentences = mutableListOf<SentenceUnit>()
         val graphemeIterator = BreakIterator.getCharacterInstance(Locale.getDefault())
 
         sentenceRanges.forEachIndexed { sentenceIndex, range ->
-            val sentenceText = normalized.substring(range.first, range.second)
+            val sentenceText = normalizedText.substring(range.first, range.second)
             val sentenceTokenStart = tokens.size
             val localTokens = tokenizeSentence(
                 sentenceText,
@@ -52,63 +59,23 @@ object TextProcessor {
             )
         }
 
-        return ProcessedDocument(normalized, sentences, tokens)
+        return ProcessedDocument(normalizedText, sentences, tokens)
     }
 
     fun normalize(rawText: String): String {
-        if (rawText.isEmpty()) return ""
+        var text = rawText
+            .replace("\uFEFF", "")
+            .replace("\r\n", "\n")
+            .replace('\r', '\n')
+            .replace('\u00A0', ' ')
 
-        val out = StringBuilder(rawText.length)
-        var pendingBreak = 0 // 0: none, 1: space/single line break, 2: paragraph break
-        var i = 0
-
-        fun noteSpace() {
-            if (pendingBreak < 1) pendingBreak = 1
-        }
-
-        while (i < rawText.length) {
-            when (val ch = rawText[i]) {
-                '\uFEFF' -> i++
-                ' ', '\t', '\u00A0' -> {
-                    noteSpace()
-                    i++
-                }
-                '\r', '\n' -> {
-                    var j = i
-                    var newlineCount = 0
-                    while (j < rawText.length) {
-                        when (rawText[j]) {
-                            '\uFEFF' -> j++
-                            ' ', '\t', '\u00A0' -> j++
-                            '\r' -> {
-                                newlineCount++
-                                j++
-                                if (j < rawText.length && rawText[j] == '\n') j++
-                            }
-                            '\n' -> {
-                                newlineCount++
-                                j++
-                            }
-                            else -> break
-                        }
-                    }
-                    pendingBreak = if (newlineCount >= 2) 2 else maxOf(pendingBreak, 1)
-                    i = j
-                }
-                else -> {
-                    if (out.isNotEmpty()) {
-                        when (pendingBreak) {
-                            2 -> out.append("\n\n")
-                            1 -> out.append(' ')
-                        }
-                    }
-                    out.append(ch)
-                    pendingBreak = 0
-                    i++
-                }
-            }
-        }
-        return out.toString().trim()
+        // EPUB/TXT paragraphs are preserved; single hard wraps (common in PDF extraction) become spaces.
+        text = text.replace(horizontalWhitespaceRegex, " ")
+        text = text.replace(paragraphBreakRegex, "\n\n")
+        text = text.replace(singleLineBreakRegex, " ")
+        text = text.replace(repeatedSpaceRegex, " ")
+        text = text.replace(paragraphTrimRegex, "\n\n")
+        return text.trim()
     }
 
     private fun splitSentences(text: String): List<Pair<Int, Int>> {

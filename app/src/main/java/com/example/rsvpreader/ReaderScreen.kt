@@ -171,7 +171,7 @@ fun ReaderScreen(
         }
 
         val result = cached ?: withContext(Dispatchers.Default) {
-            TextProcessor.process(files.text)
+            TextProcessor.processNormalized(files.text)
         }
 
         if (result.tokens.isEmpty()) {
