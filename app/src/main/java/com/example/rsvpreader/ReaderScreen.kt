@@ -7,6 +7,8 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -76,7 +78,9 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.AnnotatedString
@@ -133,16 +137,14 @@ fun ReaderScreen(
     }
 
     LaunchedEffect(documentId) {
-        val text = withContext(Dispatchers.IO) { store.loadText(documentId) }
-        if (text == null) {
+        val result = withContext(Dispatchers.IO) { store.loadProcessed(documentId) }
+        if (result == null) {
             loadError = "저장된 문서 본문을 찾지 못했습니다."
+        } else if (result.tokens.isEmpty()) {
+            loadError = "읽을 수 있는 텍스트가 없습니다."
         } else {
-            val result = withContext(Dispatchers.Default) { TextProcessor.process(text) }
-            if (result.tokens.isEmpty()) loadError = "읽을 수 있는 텍스트가 없습니다."
-            else {
-                processed = result
-                currentIndex = (document?.globalTokenIndex ?: 0).coerceIn(0, result.tokens.lastIndex)
-            }
+            processed = result
+            currentIndex = (document?.globalTokenIndex ?: 0).coerceIn(0, result.tokens.lastIndex)
         }
     }
 
@@ -731,6 +733,13 @@ private fun PlaybackControls(
 ) {
     val navigationIconColor = MaterialTheme.colorScheme.onSurface
     val disabledNavigationIconColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+    val isDarkSurface = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val navigationPressedColor = MaterialTheme.colorScheme.onSurface.copy(
+        alpha = if (isDarkSurface) 0.24f else 0.12f
+    )
+    val playPressedColor = MaterialTheme.colorScheme.primary.copy(
+        alpha = if (isDarkSurface) 0.28f else 0.18f
+    )
 
     Row(
         modifier = Modifier
@@ -742,7 +751,8 @@ private fun PlaybackControls(
     ) {
         PlaybackNavigationButton(
             enabled = canPreviousSentence,
-            onClick = onPreviousSentence
+            onClick = onPreviousSentence,
+            pressedColor = navigationPressedColor
         ) {
             Icon(
                 Icons.Default.FastRewind,
@@ -753,7 +763,8 @@ private fun PlaybackControls(
         }
         PlaybackNavigationButton(
             enabled = canPrevious,
-            onClick = onPrevious
+            onClick = onPrevious,
+            pressedColor = navigationPressedColor
         ) {
             Icon(
                 Icons.Default.ArrowLeft,
@@ -762,23 +773,15 @@ private fun PlaybackControls(
                 tint = if (canPrevious) navigationIconColor else disabledNavigationIconColor
             )
         }
-        Surface(
+        PlaybackPlayButton(
+            isPlaying = isPlaying,
             onClick = onPlayPause,
-            modifier = Modifier.size(66.dp),
-            shape = CircleShape,
-            tonalElevation = 4.dp
-        ) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Icon(
-                    if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    if (isPlaying) "일시정지" else "재생",
-                    modifier = Modifier.size(34.dp)
-                )
-            }
-        }
+            pressedColor = playPressedColor
+        )
         PlaybackNavigationButton(
             enabled = canNext,
-            onClick = onNext
+            onClick = onNext,
+            pressedColor = navigationPressedColor
         ) {
             Icon(
                 Icons.Default.ArrowRight,
@@ -789,7 +792,8 @@ private fun PlaybackControls(
         }
         PlaybackNavigationButton(
             enabled = canNextSentence,
-            onClick = onNextSentence
+            onClick = onNextSentence,
+            pressedColor = navigationPressedColor
         ) {
             Icon(
                 Icons.Default.FastForward,
@@ -802,21 +806,75 @@ private fun PlaybackControls(
 }
 
 @Composable
+private fun PlaybackPlayButton(
+    isPlaying: Boolean,
+    onClick: () -> Unit,
+    pressedColor: Color
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+
+    Surface(
+        modifier = Modifier
+            .size(66.dp)
+            .graphicsLayer {
+                val scale = if (pressed) 0.97f else 1f
+                scaleX = scale
+                scaleY = scale
+            },
+        shape = CircleShape,
+        tonalElevation = if (pressed) 2.dp else 4.dp
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(CircleShape)
+                .background(if (pressed) pressedColor else Color.Transparent)
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = onClick
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                if (isPlaying) "일시정지" else "재생",
+                modifier = Modifier.size(34.dp)
+            )
+        }
+    }
+}
+
+@Composable
 private fun PlaybackNavigationButton(
     enabled: Boolean,
     onClick: () -> Unit,
+    pressedColor: Color,
     content: @Composable () -> Unit
 ) {
-    Surface(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = Modifier.size(58.dp),
-        shape = CircleShape,
-        color = Color.Transparent
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+
+    Box(
+        modifier = Modifier
+            .size(58.dp)
+            .graphicsLayer {
+                val scale = if (pressed && enabled) 0.96f else 1f
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(CircleShape)
+            .background(if (pressed && enabled) pressedColor else Color.Transparent)
+            .clickable(
+                enabled = enabled,
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center
     ) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            content()
-        }
+        content()
     }
 }
 

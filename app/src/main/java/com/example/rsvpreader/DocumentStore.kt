@@ -3,13 +3,21 @@ package com.example.rsvpreader
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
+import java.io.DataInputStream
+import java.io.DataOutputStream
 import java.io.File
 import java.security.MessageDigest
+import java.util.LinkedHashMap
 import java.util.UUID
 
 class DocumentStore(private val context: Context) {
     private val prefs = context.getSharedPreferences("library", Context.MODE_PRIVATE)
     private val documentDir = File(context.filesDir, "documents").apply { mkdirs() }
+    private val processedCache = object : LinkedHashMap<String, ProcessedDocument>(4, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ProcessedDocument>?): Boolean = size > 3
+    }
 
     fun listDocuments(): List<DocumentEntry> {
         val ids = prefs.getStringSet("doc_ids", emptySet()).orEmpty()
@@ -21,6 +29,21 @@ class DocumentStore(private val context: Context) {
     fun loadText(id: String): String? {
         val file = File(documentDir, "$id.txt")
         return if (file.exists()) file.readText(Charsets.UTF_8) else null
+    }
+
+    fun loadProcessed(id: String): ProcessedDocument? {
+        synchronized(processedCache) {
+            processedCache[id]?.let { return it }
+        }
+
+        val entry = readEntry(id) ?: return null
+        val text = loadText(id) ?: return null
+        val cached = readProcessedCache(id, text, entry.contentHash)
+        val processed = cached ?: TextProcessor.process(text).also {
+            if (it.tokens.isNotEmpty()) writeProcessedCache(id, it, entry.contentHash)
+        }
+        synchronized(processedCache) { processedCache[id] = processed }
+        return processed
     }
 
     fun addDocument(
@@ -69,6 +92,8 @@ class DocumentStore(private val context: Context) {
         )
         val ids = prefs.getStringSet("doc_ids", emptySet()).orEmpty().toMutableSet().apply { add(id) }
         prefs.edit().putStringSet("doc_ids", ids).putString("doc_$id", entry.toJson().toString()).apply()
+        synchronized(processedCache) { processedCache[id] = processed }
+        writeProcessedCache(id, processed, hash)
         return ImportResult.Success(entry)
     }
 
@@ -82,6 +107,8 @@ class DocumentStore(private val context: Context) {
 
     fun delete(id: String) {
         File(documentDir, "$id.txt").delete()
+        processedCacheFile(id).delete()
+        synchronized(processedCache) { processedCache.remove(id) }
         val ids = prefs.getStringSet("doc_ids", emptySet()).orEmpty().toMutableSet().apply { remove(id) }
         prefs.edit().putStringSet("doc_ids", ids).remove("doc_$id").apply()
     }
@@ -103,6 +130,35 @@ class DocumentStore(private val context: Context) {
             ),
             sync = sync
         )
+    }
+
+    private fun processedCacheFile(id: String) = File(documentDir, "$id.processed.bin")
+
+    private fun readProcessedCache(id: String, text: String, contentHash: String): ProcessedDocument? {
+        val file = processedCacheFile(id)
+        if (!file.exists()) return null
+        val result = runCatching {
+            DataInputStream(BufferedInputStream(file.inputStream())).use { input ->
+                ProcessedDocumentCacheCodec.read(input, text, contentHash)
+            }
+        }.getOrNull()
+        if (result == null) file.delete()
+        return result
+    }
+
+    private fun writeProcessedCache(id: String, processed: ProcessedDocument, contentHash: String) {
+        val target = processedCacheFile(id)
+        val temp = File(documentDir, "$id.processed.tmp")
+        runCatching {
+            DataOutputStream(BufferedOutputStream(temp.outputStream())).use { output ->
+                ProcessedDocumentCacheCodec.write(output, processed, contentHash)
+            }
+            if (target.exists()) target.delete()
+            if (!temp.renameTo(target)) {
+                temp.copyTo(target, overwrite = true)
+                temp.delete()
+            }
+        }.onFailure { temp.delete() }
     }
 
     private fun writeEntry(entry: DocumentEntry, sync: Boolean = false) {
