@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -71,6 +72,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -118,7 +120,13 @@ fun ReaderScreen(
     var ttsReady by remember(documentId) { mutableStateOf(false) }
     var ttsNotice by remember(documentId) { mutableStateOf<String?>(null) }
     val appContext = LocalContext.current.applicationContext
+    val view = LocalView.current
     val ttsController = remember(documentId) { SystemTtsController(appContext) }
+
+    DisposableEffect(view, isPlaying) {
+        view.keepScreenOn = isPlaying
+        onDispose { view.keepScreenOn = false }
+    }
 
     DisposableEffect(ttsController) {
         onDispose { ttsController.shutdown() }
@@ -473,6 +481,7 @@ fun ReaderScreen(
         ) {
             FullTextPanel(
                 data = data,
+                toc = document?.toc.orEmpty(),
                 currentSentenceIndex = currentSentenceIndex,
                 fontSize = settings.contextFontSp,
                 highlightColor = settings.effectiveFocusColor,
@@ -492,6 +501,9 @@ fun ReaderScreen(
                     if (sentence.tokenCount > 0) {
                         moveToAndPlay(sentence.tokenStartGlobal)
                     }
+                },
+                onTocSelect = { entry ->
+                    moveTo(entry.globalTokenIndex)
                 },
                 modifier = Modifier
                     .width(maxWidth * 0.86f)
@@ -728,10 +740,9 @@ private fun PlaybackControls(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(
-            onClick = onPreviousSentence,
+        PlaybackNavigationButton(
             enabled = canPreviousSentence,
-            modifier = Modifier.size(58.dp)
+            onClick = onPreviousSentence
         ) {
             Icon(
                 Icons.Default.FastRewind,
@@ -740,10 +751,9 @@ private fun PlaybackControls(
                 tint = if (canPreviousSentence) navigationIconColor else disabledNavigationIconColor
             )
         }
-        IconButton(
-            onClick = onPrevious,
+        PlaybackNavigationButton(
             enabled = canPrevious,
-            modifier = Modifier.size(58.dp)
+            onClick = onPrevious
         ) {
             Icon(
                 Icons.Default.ArrowLeft,
@@ -752,11 +762,13 @@ private fun PlaybackControls(
                 tint = if (canPrevious) navigationIconColor else disabledNavigationIconColor
             )
         }
-        Surface(shape = RoundedCornerShape(50), tonalElevation = 4.dp) {
-            IconButton(
-                onClick = onPlayPause,
-                modifier = Modifier.size(66.dp)
-            ) {
+        Surface(
+            onClick = onPlayPause,
+            modifier = Modifier.size(66.dp),
+            shape = CircleShape,
+            tonalElevation = 4.dp
+        ) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Icon(
                     if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                     if (isPlaying) "일시정지" else "재생",
@@ -764,10 +776,9 @@ private fun PlaybackControls(
                 )
             }
         }
-        IconButton(
-            onClick = onNext,
+        PlaybackNavigationButton(
             enabled = canNext,
-            modifier = Modifier.size(58.dp)
+            onClick = onNext
         ) {
             Icon(
                 Icons.Default.ArrowRight,
@@ -776,10 +787,9 @@ private fun PlaybackControls(
                 tint = if (canNext) navigationIconColor else disabledNavigationIconColor
             )
         }
-        IconButton(
-            onClick = onNextSentence,
+        PlaybackNavigationButton(
             enabled = canNextSentence,
-            modifier = Modifier.size(58.dp)
+            onClick = onNextSentence
         ) {
             Icon(
                 Icons.Default.FastForward,
@@ -787,6 +797,25 @@ private fun PlaybackControls(
                 modifier = Modifier.size(29.dp),
                 tint = if (canNextSentence) navigationIconColor else disabledNavigationIconColor
             )
+        }
+    }
+}
+
+@Composable
+private fun PlaybackNavigationButton(
+    enabled: Boolean,
+    onClick: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.size(58.dp),
+        shape = CircleShape,
+        color = Color.Transparent
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            content()
         }
     }
 }
@@ -801,13 +830,22 @@ private fun FocusToken(
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
     val focusRange = remember(text) { TextProcessor.focusGraphemeRange(text) }
+    val lexicalGraphemeCount = remember(text) {
+        TextProcessor.graphemeRanges(text).count { range ->
+            text.substring(range.first, range.last + 1).any(Char::isLetter)
+        }
+    }
     val baseColor = MaterialTheme.colorScheme.onSurface
     val neighborColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
     val focusColor = if (settings.showFocusColor) settings.effectiveFocusColor else baseColor
     val annotated = remember(text, focusRange, focusColor) {
         AnnotatedString.Builder(text).apply {
             if (focusRange != null) {
-                addStyle(SpanStyle(color = focusColor, fontWeight = FontWeight.Bold), focusRange.first, focusRange.last + 1)
+                addStyle(
+                    SpanStyle(color = focusColor, fontWeight = FontWeight.Bold),
+                    focusRange.first,
+                    focusRange.last + 1
+                )
             }
         }.toAnnotatedString()
     }
@@ -815,12 +853,24 @@ private fun FocusToken(
     BoxWithConstraints(Modifier.fillMaxWidth().height(94.dp)) {
         val availableWidthPx = with(density) { maxWidth.toPx() }
         val edgePaddingPx = with(density) { 8.dp.toPx() }
+        val baseStyle = TextStyle(
+            fontSize = settings.rsvpFontSp.sp,
+            color = baseColor,
+            fontWeight = FontWeight.Medium
+        )
         val requestedResult = remember(annotated, settings.rsvpFontSp, baseColor) {
-            measurer.measure(
-                text = annotated,
-                style = TextStyle(fontSize = settings.rsvpFontSp.sp, color = baseColor, fontWeight = FontWeight.Medium)
-            )
+            measurer.measure(text = annotated, style = baseStyle)
         }
+        val plainRequestedResult = remember(text, settings.rsvpFontSp, baseColor) {
+            measurer.measure(text = AnnotatedString(text), style = baseStyle)
+        }
+        val typicalLatinGlyphWidth = remember(settings.rsvpFontSp, baseColor) {
+            measurer.measure(
+                text = AnnotatedString("nnnnnnnnnn"),
+                style = baseStyle
+            ).size.width / 10f
+        }.coerceAtLeast(1f)
+
         val requestedFocusCenter = if (focusRange != null && text.isNotEmpty()) {
             val first = requestedResult.getBoundingBox(focusRange.first)
             val last = requestedResult.getBoundingBox(focusRange.last.coerceAtMost(text.lastIndex))
@@ -828,26 +878,53 @@ private fun FocusToken(
         } else {
             requestedResult.size.width / 2f
         }
-        val requiredHalfWidth = maxOf(requestedFocusCenter, requestedResult.size.width - requestedFocusCenter).coerceAtLeast(1f)
+        val requiredHalfWidth = maxOf(
+            requestedFocusCenter,
+            requestedResult.size.width - requestedFocusCenter
+        ).coerceAtLeast(1f)
         val usableHalfWidth = (availableWidthPx / 2f - edgePaddingPx).coerceAtLeast(1f)
-        val scale = (usableHalfWidth / requiredHalfWidth).coerceAtMost(1f)
-        val effectiveFontSp = (settings.rsvpFontSp * scale).coerceAtLeast(8f)
+        val latinEquivalentCharacters = if (classifyRsvpTokenLanguage(text) == RsvpTokenLanguage.LATIN) {
+            plainRequestedResult.size.width / typicalLatinGlyphWidth
+        } else {
+            null
+        }
+        val proactiveScale = proactiveRsvpScale(
+            text = text,
+            graphemeCount = lexicalGraphemeCount,
+            latinEquivalentCharacters = latinEquivalentCharacters
+        )
+        val widthScale = widthFitRsvpScale(requiredHalfWidth, usableHalfWidth)
+        val effectiveFontSp = effectiveRsvpFontSp(
+            baseFontSp = settings.rsvpFontSp,
+            proactiveScale = proactiveScale,
+            widthFitScale = widthScale
+        )
 
         val currentResult = remember(annotated, effectiveFontSp, baseColor) {
             measurer.measure(
                 text = annotated,
-                style = TextStyle(fontSize = effectiveFontSp.sp, color = baseColor, fontWeight = FontWeight.Medium)
+                style = TextStyle(
+                    fontSize = effectiveFontSp.sp,
+                    color = baseColor,
+                    fontWeight = FontWeight.Medium
+                )
             )
         }
         val neighborFontSp = effectiveFontSp * 0.62f
         val previousResult = remember(previousText, neighborFontSp, neighborColor) {
             previousText?.let {
-                measurer.measure(text = AnnotatedString(it), style = TextStyle(fontSize = neighborFontSp.sp, color = neighborColor))
+                measurer.measure(
+                    text = AnnotatedString(it),
+                    style = TextStyle(fontSize = neighborFontSp.sp, color = neighborColor)
+                )
             }
         }
         val nextResult = remember(nextText, neighborFontSp, neighborColor) {
             nextText?.let {
-                measurer.measure(text = AnnotatedString(it), style = TextStyle(fontSize = neighborFontSp.sp, color = neighborColor))
+                measurer.measure(
+                    text = AnnotatedString(it),
+                    style = TextStyle(fontSize = neighborFontSp.sp, color = neighborColor)
+                )
             }
         }
 
@@ -864,11 +941,23 @@ private fun FocusToken(
             val gap = 22.dp.toPx()
 
             previousResult?.let { previous ->
-                drawText(textLayoutResult = previous, topLeft = Offset(currentX - gap - previous.size.width, (size.height - previous.size.height) / 2f))
+                drawText(
+                    textLayoutResult = previous,
+                    topLeft = Offset(
+                        currentX - gap - previous.size.width,
+                        (size.height - previous.size.height) / 2f
+                    )
+                )
             }
             drawText(textLayoutResult = currentResult, topLeft = Offset(currentX, currentY))
             nextResult?.let { next ->
-                drawText(textLayoutResult = next, topLeft = Offset(currentX + currentResult.size.width + gap, (size.height - next.size.height) / 2f))
+                drawText(
+                    textLayoutResult = next,
+                    topLeft = Offset(
+                        currentX + currentResult.size.width + gap,
+                        (size.height - next.size.height) / 2f
+                    )
+                )
             }
         }
     }
@@ -877,30 +966,52 @@ private fun FocusToken(
 @Composable
 private fun FullTextPanel(
     data: ProcessedDocument,
+    toc: List<DocumentTocEntry>,
     currentSentenceIndex: Int,
     fontSize: Float,
     highlightColor: Color,
     onClose: () -> Unit,
     onSettings: () -> Unit,
     onSentenceClick: (Int) -> Unit,
+    onTocSelect: (DocumentTocEntry) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
-    LaunchedEffect(currentSentenceIndex) {
-        listState.scrollToItem(currentSentenceIndex.coerceIn(0, data.sentences.lastIndex))
+    var tocOpen by remember { mutableStateOf(false) }
+
+    LaunchedEffect(currentSentenceIndex, tocOpen) {
+        if (!tocOpen) {
+            listState.scrollToItem(currentSentenceIndex.coerceIn(0, data.sentences.lastIndex))
+        }
     }
+
     Surface(modifier = modifier, shadowElevation = 14.dp, tonalElevation = 2.dp) {
         Column(Modifier.fillMaxSize()) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("전체 글", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                Text(
+                    if (tocOpen) "목차" else "전체 글",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.weight(1f)
+                )
+                if (toc.isNotEmpty()) {
+                    TextButton(onClick = { tocOpen = !tocOpen }) {
+                        Text(if (tocOpen) "본문" else "목차")
+                    }
+                }
                 TextButton(
                     onClick = {
-                        scope.launch {
-                            listState.animateScrollToItem(currentSentenceIndex.coerceIn(0, data.sentences.lastIndex))
+                        if (tocOpen) {
+                            tocOpen = false
+                        } else {
+                            scope.launch {
+                                listState.animateScrollToItem(
+                                    currentSentenceIndex.coerceIn(0, data.sentences.lastIndex)
+                                )
+                            }
                         }
                     }
                 ) { Text("현재 위치") }
@@ -908,21 +1019,55 @@ private fun FullTextPanel(
                 IconButton(onClick = onClose) { Icon(Icons.Default.Close, "닫기") }
             }
             HorizontalDivider()
-            LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-                items(data.sentences.size, key = { it }) { i ->
-                    val current = i == currentSentenceIndex
-                    Text(
-                        data.sentences[i].text,
-                        fontSize = fontSize.sp,
-                        lineHeight = (fontSize * 1.5f).sp,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(if (current) highlightColor.copy(alpha = 0.20f) else Color.Transparent)
-                            .clickable { onSentenceClick(i) }
-                            .padding(horizontal = 18.dp, vertical = 10.dp),
-                        color = if (current) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal
-                    )
+
+            if (tocOpen && toc.isNotEmpty()) {
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(toc.size, key = { it }) { index ->
+                        val entry = toc[index]
+                        Text(
+                            entry.title,
+                            fontSize = fontSize.sp,
+                            lineHeight = (fontSize * 1.35f).sp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    tocOpen = false
+                                    onTocSelect(entry)
+                                }
+                                .padding(
+                                    start = (18 + entry.level.coerceAtMost(6) * 18).dp,
+                                    end = 18.dp,
+                                    top = 10.dp,
+                                    bottom = 10.dp
+                                ),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+                    items(data.sentences.size, key = { it }) { i ->
+                        val current = i == currentSentenceIndex
+                        Text(
+                            data.sentences[i].text,
+                            fontSize = fontSize.sp,
+                            lineHeight = (fontSize * 1.5f).sp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    if (current) highlightColor.copy(alpha = 0.20f)
+                                    else Color.Transparent
+                                )
+                                .clickable { onSentenceClick(i) }
+                                .padding(horizontal = 18.dp, vertical = 10.dp),
+                            color = if (current) {
+                                MaterialTheme.colorScheme.onSurface
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal
+                        )
+                    }
                 }
             }
         }

@@ -11,6 +11,18 @@ enum class SourceType { PASTE, TXT, PDF, EPUB }
 
 enum class LightBackground { WHITE, WARM }
 
+data class ImportedTocEntry(
+    val title: String,
+    val level: Int,
+    val charOffset: Int
+)
+
+data class DocumentTocEntry(
+    val title: String,
+    val level: Int,
+    val globalTokenIndex: Int
+)
+
 data class DocumentEntry(
     val id: String,
     val title: String,
@@ -23,7 +35,8 @@ data class DocumentEntry(
     val sentenceIndex: Int,
     val tokenIndexInSentence: Int,
     val tokenCount: Int,
-    val progress: Float
+    val progress: Float,
+    val toc: List<DocumentTocEntry> = emptyList()
 )
 
 data class RsvpToken(
@@ -51,6 +64,23 @@ data class ProcessedDocument(
     val sentences: List<SentenceUnit>,
     val tokens: List<RsvpToken>
 )
+
+fun mapImportedToc(processed: ProcessedDocument, source: List<ImportedTocEntry>): List<DocumentTocEntry> {
+    if (processed.tokens.isEmpty() || source.isEmpty()) return emptyList()
+    return source.mapNotNull { item ->
+        val title = item.title.trim()
+        if (title.isBlank()) return@mapNotNull null
+        val offset = item.charOffset.coerceIn(0, processed.normalizedText.length)
+        val token = processed.tokens.firstOrNull { it.endExclusive > offset }
+            ?: processed.tokens.lastOrNull()
+            ?: return@mapNotNull null
+        DocumentTocEntry(
+            title = title,
+            level = item.level.coerceAtLeast(0),
+            globalTokenIndex = token.globalIndex
+        )
+    }.distinctBy { Triple(it.title, it.level, it.globalTokenIndex) }
+}
 
 data class ReaderPosition(
     val globalTokenIndex: Int,

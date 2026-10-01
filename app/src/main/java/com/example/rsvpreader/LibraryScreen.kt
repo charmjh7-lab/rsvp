@@ -87,7 +87,8 @@ fun LibraryScreen(
                                 requestedTitle = extracted.originalName,
                                 sourceType = extracted.sourceType,
                                 originalName = extracted.originalName,
-                                rawText = extracted.text
+                                rawText = extracted.text,
+                                sourceToc = extracted.toc
                             )
                         },
                         onFailure = { ImportResult.Failure(it.message ?: "문서를 가져오지 못했습니다.") }

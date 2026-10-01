@@ -1,6 +1,7 @@
 package com.example.rsvpreader
 
 import android.content.Context
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.security.MessageDigest
@@ -26,15 +27,24 @@ class DocumentStore(private val context: Context) {
         requestedTitle: String?,
         sourceType: SourceType,
         originalName: String?,
-        rawText: String
+        rawText: String,
+        sourceToc: List<ImportedTocEntry> = emptyList()
     ): ImportResult {
         val processed = TextProcessor.process(rawText)
         if (processed.tokens.isEmpty()) {
             return ImportResult.Failure("읽을 수 있는 텍스트를 찾지 못했습니다.")
         }
         val hash = sha256(processed.normalizedText)
+        val mappedToc = mapImportedToc(processed, sourceToc)
         val duplicate = listDocuments().firstOrNull { it.contentHash == hash }
-        if (duplicate != null) return ImportResult.Success(duplicate, duplicate)
+        if (duplicate != null) {
+            val resolved = if (duplicate.toc.isEmpty() && mappedToc.isNotEmpty()) {
+                duplicate.copy(toc = mappedToc).also(::writeEntry)
+            } else {
+                duplicate
+            }
+            return ImportResult.Success(resolved, resolved)
+        }
 
         val now = System.currentTimeMillis()
         val id = UUID.randomUUID().toString()
@@ -54,7 +64,8 @@ class DocumentStore(private val context: Context) {
             sentenceIndex = 0,
             tokenIndexInSentence = 0,
             tokenCount = processed.tokens.size,
-            progress = 0f
+            progress = 0f,
+            toc = mappedToc
         )
         val ids = prefs.getStringSet("doc_ids", emptySet()).orEmpty().toMutableSet().apply { add(id) }
         prefs.edit().putStringSet("doc_ids", ids).putString("doc_$id", entry.toJson().toString()).apply()
@@ -127,6 +138,15 @@ class DocumentStore(private val context: Context) {
         put("tokenIndexInSentence", tokenIndexInSentence)
         put("tokenCount", tokenCount)
         put("progress", progress.toDouble())
+        put("toc", JSONArray().apply {
+            toc.forEach { item ->
+                put(JSONObject().apply {
+                    put("title", item.title)
+                    put("level", item.level)
+                    put("globalTokenIndex", item.globalTokenIndex)
+                })
+            }
+        })
     }
 
     private fun JSONObject.toEntry() = DocumentEntry(
@@ -141,6 +161,25 @@ class DocumentStore(private val context: Context) {
         sentenceIndex = optInt("sentenceIndex", 0),
         tokenIndexInSentence = optInt("tokenIndexInSentence", 0),
         tokenCount = optInt("tokenCount", 0),
-        progress = optDouble("progress", 0.0).toFloat()
+        progress = optDouble("progress", 0.0).toFloat(),
+        toc = optJSONArray("toc").toDocumentToc()
     )
+
+    private fun JSONArray?.toDocumentToc(): List<DocumentTocEntry> {
+        if (this == null) return emptyList()
+        return buildList {
+            for (i in 0 until length()) {
+                val item = optJSONObject(i) ?: continue
+                val title = item.optString("title").trim()
+                if (title.isBlank()) continue
+                add(
+                    DocumentTocEntry(
+                        title = title,
+                        level = item.optInt("level", 0).coerceAtLeast(0),
+                        globalTokenIndex = item.optInt("globalTokenIndex", 0).coerceAtLeast(0)
+                    )
+                )
+            }
+        }
+    }
 }
