@@ -51,9 +51,17 @@ class ReaderPerformanceDiagnosticTest {
             }.toByteArray()
         }
 
+        val cacheFile = File.createTempFile("rsvp-cache-", ".bin")
+        cacheFile.writeBytes(encoded)
+        var cacheFileBytes = byteArrayOf()
+        val cacheFileReadNs = measureNanoTime {
+            cacheFileBytes = cacheFile.readBytes()
+        }
+        check(cacheFileBytes.size == encoded.size)
+
         lateinit var decoded: ProcessedDocument
         val decodeNs = measureNanoTime {
-            decoded = DataInputStream(ByteArrayInputStream(encoded)).use { input ->
+            decoded = DataInputStream(ByteArrayInputStream(cacheFileBytes)).use { input ->
                 requireNotNull(
                     ProcessedDocumentCacheCodec.read(
                         input,
@@ -80,6 +88,7 @@ class ReaderPerformanceDiagnosticTest {
         check(sessionHit?.processed === coldProcessed)
 
         temp.delete()
+        cacheFile.delete()
 
         fun ms(ns: Long) = ns / 1_000_000.0
         println(
@@ -91,6 +100,7 @@ class ReaderPerformanceDiagnosticTest {
                 "coldProcessMs=${"%.3f".format(ms(coldProcessNs))} " +
                 "warmProcessMs=${"%.3f".format(ms(warmProcessNs))} " +
                 "cacheEncodeMs=${"%.3f".format(ms(encodeNs))} " +
+                "cacheFileReadMs=${"%.3f".format(ms(cacheFileReadNs))} " +
                 "cacheDecodeMs=${"%.3f".format(ms(decodeNs))} " +
                 "memoryHit10kMs=${"%.3f".format(ms(memoryHitNs))} " +
                 "sessionHit10kMs=${"%.3f".format(ms(sessionHitNs))} " +
