@@ -280,19 +280,34 @@ object TextProcessor {
     }
 
     private fun matchSpecial(text: String, start: Int): Int? {
-        val urlMatch = urlRegex.matchAt(text, start)
-        val emailMatch = if (urlMatch == null) emailRegex.matchAt(text, start) else null
-        val match = urlMatch ?: emailMatch ?: return null
-        var end = match.range.last + 1
-        if (emailMatch != null) {
-            while (
-                end < text.length &&
-                (connectorChars.contains(text[end]) ||
-                    strongPauseChars.contains(text[end]) ||
-                    closingChars.contains(text[end]))
-            ) {
-                end++
+        val mayBeUrl =
+            text.regionMatches(start, "http://", 0, 7, ignoreCase = true) ||
+                text.regionMatches(start, "https://", 0, 8, ignoreCase = true) ||
+                text.regionMatches(start, "www.", 0, 4, ignoreCase = true)
+
+        val urlMatch = if (mayBeUrl) urlRegex.matchAt(text, start) else null
+        if (urlMatch != null) return urlMatch.range.last + 1
+
+        var cursor = start
+        var hasAt = false
+        while (cursor < text.length && !text[cursor].isWhitespace()) {
+            if (text[cursor] == '@') {
+                hasAt = true
+                break
             }
+            cursor++
+        }
+        if (!hasAt) return null
+
+        val emailMatch = emailRegex.matchAt(text, start) ?: return null
+        var end = emailMatch.range.last + 1
+        while (
+            end < text.length &&
+            (connectorChars.contains(text[end]) ||
+                strongPauseChars.contains(text[end]) ||
+                closingChars.contains(text[end]))
+        ) {
+            end++
         }
         return end
     }
