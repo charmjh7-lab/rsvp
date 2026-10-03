@@ -4,7 +4,7 @@ import java.text.BreakIterator
 import java.util.Locale
 
 object TextProcessor {
-    const val PROCESSING_SCHEMA_VERSION = 2
+    const val PROCESSING_SCHEMA_VERSION = 3
 
     private val horizontalWhitespaceRegex = Regex("[\\t ]+")
     private val paragraphBreakRegex = Regex(" *\\n *\\n+ *")
@@ -27,6 +27,8 @@ object TextProcessor {
     private val strongPauseChars = setOf('.', '。', '?', '？', '!', '！')
     private val openingChars = setOf('(', '[', '{', '〈', '《', '「', '『', '【', '〔', '“', '‘', '"', '\'', '<')
     private val closingChars = setOf(')', ']', '}', '〉', '》', '」', '』', '】', '〕', '”', '’', '"', '\'', '>')
+    private val openingGroupingChars = setOf('(', '[', '{', '〈', '《', '「', '『', '【', '〔', '<')
+    private val closingGroupingChars = setOf(')', ']', '}', '〉', '》', '」', '』', '】', '〕', '>')
 
     fun process(rawText: String): ProcessedDocument =
         processNormalized(normalize(rawText))
@@ -241,6 +243,17 @@ object TextProcessor {
             while (j < sentence.length) {
                 val c = sentence[j]
                 if (c.isWhitespace()) break
+
+                // Grouping brackets form explicit RSVP token boundaries.
+                // Opening brackets stay with the following token; closing brackets
+                // stay with the preceding token, even when there is no whitespace.
+                if (openingGroupingChars.contains(c)) break
+                if (closingGroupingChars.contains(c)) {
+                    j++
+                    while (j < sentence.length && closingChars.contains(sentence[j])) j++
+                    if (j < sentence.length && (weakPauseChars.contains(sentence[j]) || strongPauseChars.contains(sentence[j]))) j++
+                    break
+                }
 
                 if (connectorChars.contains(c)) {
                     val prev = sentence.getOrNull(j - 1)

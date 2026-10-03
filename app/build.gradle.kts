@@ -21,8 +21,8 @@ android {
         applicationId = "com.example.rsvpreader"
         minSdk = 26
         targetSdk = 35
-        versionCode = 16
-        versionName = "1.2.3"
+        versionCode = 17
+        versionName = "1.2.4"
     }
 
     signingConfigs {

@@ -22,6 +22,29 @@ class TextProcessorTest {
     }
 
     @Test
+    fun groupingBracketsStayWithInnerWordsButSplitFromOuterWords() {
+        assertEquals(
+            listOf("앞단어", "(괄호안)", "뒤단어"),
+            tokens("앞단어(괄호안)뒤단어")
+        )
+        assertEquals(
+            listOf("앞단어", "(괄호", "안)", "뒤단어"),
+            tokens("앞단어(괄호 안)뒤단어")
+        )
+        assertEquals(
+            listOf("before", "[inside]", "after"),
+            tokens("before[inside]after")
+        )
+    }
+
+    @Test
+    fun punctuationAfterClosingBracketStaysWithBracketedToken() {
+        val processed = TextProcessor.process("앞(안). 다음")
+        assertEquals(listOf("앞", "(안).", "다음"), processed.tokens.map { it.display })
+        assertTrue(processed.tokens[1].strongPause)
+    }
+
+    @Test
     fun decimalThousandsAndNumericSlashStayWhole() {
         assertEquals(listOf("3.14", "1,000", "2026/09/28", "10/20"), tokens("3.14 1,000 2026/09/28 10/20"))
     }
