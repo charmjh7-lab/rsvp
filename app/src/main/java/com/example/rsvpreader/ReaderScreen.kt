@@ -620,15 +620,21 @@ private fun tokenIndexForTtsRange(
 
 private fun delayFor(token: RsvpToken, settings: AppSettings): Long {
     val base = 60_000.0 / settings.wpm.coerceIn(WPM_MIN, WPM_MAX)
-    var multiplier = 1.0
-    if (settings.punctuationDelay) {
-        multiplier *= when {
+    val punctuationMultiplier = if (settings.punctuationDelay) {
+        when {
             token.strongPause -> 1.65
             token.weakPause -> 1.25
             else -> 1.0
         }
+    } else {
+        1.0
     }
-    if (settings.longWordDelay && token.graphemeCount >= 13) multiplier *= 1.30
+    val longWordMultiplier = if (settings.longWordDelay) {
+        longWordDelayMultiplier(token.display)
+    } else {
+        1.0
+    }
+    val multiplier = maxOf(punctuationMultiplier, longWordMultiplier)
     return (base * multiplier).roundToInt().toLong().coerceAtLeast(30L)
 }
 
