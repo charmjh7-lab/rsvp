@@ -58,11 +58,11 @@ jobs:
           script: |
             gradle :app:connectedDebugAndroidTest --stacktrace
             mkdir -p ui-evidence/regular ui-evidence/small
-            adb pull /sdcard/Android/data/com.example.eyemovementreader/files/. ui-evidence/regular/
+            adb pull /sdcard/Download/. ui-evidence/regular/
             adb shell wm size 640x1280
             adb shell wm density 320
             gradle :app:connectedDebugAndroidTest --stacktrace --rerun-tasks
-            adb pull /sdcard/Android/data/com.example.eyemovementreader/files/. ui-evidence/small/
+            adb pull /sdcard/Download/. ui-evidence/small/
 
       - name: Upload UI evidence
         if: always() && github.ref == 'refs/heads/development/eye-movement'

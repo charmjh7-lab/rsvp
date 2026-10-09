@@ -12,7 +12,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.io.File
+import android.os.ParcelFileDescriptor
 
 @RunWith(AndroidJUnit4::class)
 class EyeReaderUiTest {
@@ -35,11 +35,12 @@ class EyeReaderUiTest {
 
     private fun screenshot(name: String) {
         rule.waitForIdle()
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val file = File(context.getExternalFilesDir(null), "$name.png")
-        InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot().let { bitmap ->
-            file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-        }
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val pipe = automation.executeShellCommandRw("cat > /sdcard/Download/Eye-Reader-$name.png")
+        val bitmap = automation.takeScreenshot()
+        ParcelFileDescriptor.AutoCloseOutputStream(pipe[1]).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        ParcelFileDescriptor.AutoCloseInputStream(pipe[0]).use { it.readBytes() }
+        bitmap.recycle()
     }
 
     @Test fun modesNavigationAndPausePreserveReading() {
