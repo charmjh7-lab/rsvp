@@ -13,6 +13,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
@@ -43,7 +44,7 @@ fun EyeReadingDisplay(
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().testTag("eye-stage")) {
             val widthPx = with(density) { maxWidth.roundToPx() }.coerceAtLeast(1)
             val heightPx = with(density) { maxHeight.roundToPx() }.coerceAtLeast(1)
             val style = TextStyle(fontSize = settings.rsvpFontSp.sp, lineHeight = (settings.rsvpFontSp * 1.5f).sp, color = color, fontWeight = FontWeight.Normal)

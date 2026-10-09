@@ -1,6 +1,6 @@
-# RSVP Reader Android
+# Eye Reader Android
 
-RSVP Reader는 일반적인 초고속 RSVP를 그대로 복제하는 앱이 아니라, 한 번에 한 토큰씩 읽도록 하면서도 현재 문장과 앞뒤 문맥을 항상 함께 보여주는 Android 독서 도구입니다. 낯설거나 어려운 단어를 무의식적으로 건너뛰지 않고 일정한 속도로 읽는 데 초점을 둡니다.
+Eye Reader는 RSVP Reader의 서재·가져오기·본문·목차·TTS 흐름을 유지하며, 읽기 영역을 안구 이동 표시로 교체한 별도 Android 앱입니다. `development/eye-movement` 브랜치에서만 개발하며, `com.example.eyemovementreader`로 기존 앱과 함께 설치됩니다. 저장 데이터는 각각의 앱 내부에 독립적으로 보관됩니다.
 
 ## 주요 기능
 
@@ -9,15 +9,17 @@ RSVP Reader는 일반적인 초고속 RSVP를 그대로 복제하는 앱이 아�
 - 문서별 제목, 진행률, 이름 변경, 삭제, 중복 텍스트 감지
 - 각 문서의 정확한 마지막 RSVP 토큰 위치 자동 저장/복원
 - 문맥 영역: 현재 문장을 항상 중심에 두고, 공간이 허용되면 앞뒤 최대 2문장까지 표시하며 현재 문장/현재 토큰을 동기 하이라이트
-- 하단 RSVP 영역: 한 번에 한 토큰, 이전/재생·일시정지/다음
-- 가운데 grapheme 기반 집중 글자를 화면의 고정 X축 중심에 맞추는 RSVP 렌더링
+- 안구 이동 영역: 화면 크기에 따라 높이 조절, 설정에서 상단/하단 배치, 이전/재생·일시정지/다음
+- 좌우 교대: 한 단어 또는 결합 문자 한 글자씩 좌우에 교대로 표시
+- 자리 채우기: 원문 문장을 미리 배치하고 해당 위치에 순서대로 표시. 앞부분 유지/현재 항목만 표시 선택
+- 속도 옆 모드 버튼에서 모드·표시 단위·앞부분 유지 변경
 - 특수문자 기반 분리 규칙: `정치ㆍ경제` → `정치ㆍ` / `경제`, `state-of-the-art` → `state-` / `of-` / `the-` / `art`
 - 소수와 천 단위 숫자, URL, 이메일은 가능한 한 하나의 의미 단위로 유지
-- 속도 조절: 60–600 WPM, 슬라이더/±10/직접 입력
+- 속도 조절: 분당 표시 30–240회, 단어 기본 100회(600ms), 글자 기본 120회(500ms), 단위별 속도 저장, 슬라이더/±10/직접 입력
 - 선택 가능한 문장부호 지연 및 긴 단어 추가 시간
 - 오른쪽에서 들어오는 전체 글 패널, LazyColumn 가상화, 현재 문장 자동 이동/하이라이트
-- 집중색 표시/선택, 문맥/RSVP 글자 크기, 밝은 배경색 선택, 다크 모드 설정
-- 시스템 TTS 엔진/음성 선택, TTS 배속 및 가능한 엔진에서 단어 범위 기반 RSVP 동기화
+- 읽기 글자색 표시/선택, 문맥/안구 이동 글자 크기, 밝은 배경색 선택, 다크 모드 설정
+- 시스템 TTS 엔진/음성 선택, TTS 배속 및 가능한 엔진에서 단어 범위 기반 읽기 표시 동기화
 - Android Storage Access Framework를 사용하며 광범위한 저장소 권한을 요구하지 않음
 
 ## 파일 형식
@@ -31,7 +33,7 @@ RSVP Reader는 일반적인 초고속 RSVP를 그대로 복제하는 앱이 아�
 
 ## 위치 동기화 설계
 
-읽기 위치의 단일 source of truth는 `globalTokenIndex`입니다. 각 RSVP 토큰에는 원문 범위, 문장 인덱스, 문장 안 토큰 인덱스가 함께 저장되며 문맥, RSVP, 전체 글 패널, 복원 위치가 모두 같은 토큰 모델을 사용합니다. UI별로 별도의 읽기 위치를 유지하지 않습니다. 재생 중 위치는 메모리에서 즉시 갱신하고 영구 저장은 짧은 간격으로 묶어서 수행하며, 화면 이탈과 lifecycle 종료 시점에는 최신 위치를 즉시 동기 저장합니다.
+읽기 위치의 단일 source of truth는 `globalTokenIndex`입니다. 각 RSVP 토큰에는 원문 범위, 문장 인덱스, 문장 안 토큰 인덱스가 함께 저장되며 문맥, 안구 이동, 전체 글 패널, 복원 위치가 모두 같은 토큰 모델을 사용합니다. 글자 표시에서는 현재 토큰 안에 임시 결합 문자 커서를 둡니다. 이전/다음 버튼도 글자 단위로 이동하며 앱을 다시 열면 저장된 단어의 첫 글자부터 시작합니다. 모드 변경은 현재 단어 위치를 유지합니다. TTS는 음성의 단어 위치가 기준이며 글자 표시보다 우선합니다. 재생 중 위치는 메모리에서 즉시 갱신하고 영구 저장은 짧은 간격으로 묶어서 수행하며, 화면 이탈과 lifecycle 종료 시점에는 최신 위치를 즉시 동기 저장합니다.
 
 ## 빌드
 
@@ -49,15 +51,26 @@ gradle :app:assembleDebug
 
 `app/build/outputs/apk/debug/app-debug.apk`
 
-GitHub Actions의 `.github/workflows/bootstrap-build.yml`에서 JVM 단위 테스트와 `assembleDebug`를 실행한 뒤 `RSVP-Reader-debug-apk` artifact를 업로드합니다.
+GitHub Actions의 `.github/workflows/bootstrap-build.yml`에서 JVM 단위 테스트와 `assembleDebug`를 실행한 뒤 `Eye-Reader-debug-apk` artifact를 업로드합니다.
 
 ## 의도적으로 제외한 기능
 
 OCR, 클라우드 동기화, 메모, 밑줄/주석 등은 현재 핵심 읽기 경험과 위치 동기화를 우선하기 위해 포함하지 않았습니다.
 
 
-## Update signing
+## 서명과 별도 설치
 
-Starting with version 1.0.1, debug APKs are signed with the repository's dedicated development update key so future debug APKs can be installed as updates over this version. This key is for development builds only and must not be reused for production distribution.
+별도의 applicationId와 눈 모양 아이콘·Eye Reader 이름을 사용합니다. 저장소의 고정 개발 서명키는 유지하여 후속 Eye Reader APK를 업데이트 설치할 수 있습니다. 기존 RSVP Reader의 데이터와 설치를 덮어쓰지 않습니다.
 
-The earlier 1.0.0 artifact was signed by an ephemeral GitHub-hosted runner debug key. Its private key no longer exists, so Android cannot accept 1.0.1 as an in-place update over that exact APK. If 1.0.0 is already installed, uninstall it once before installing 1.0.1. Builds after 1.0.1 retain the same signing identity.
+## 연구 참고와 속도 설정
+
+- Nguyen et al. (2011), Acta Ophthalmologica: https://doi.org/10.1111/j.1755-3768.2010.02081.x
+  - 청소년기 황반 질환 참가자 36명을 대상으로 RSVP와 감각운동 읽기 훈련을 비교했습니다. 감각운동 조건은 글자 구간을 순차 제시하는 moving window이며 개인의 기존 읽기 속도에 맞춰 표시 시간을 정했습니다.
+- Kaltenegger et al. (2019), Graefe’s Archive: https://doi.org/10.1007/s00417-019-04328-9
+  - AMD 환자의 RSVP 읽기 훈련에서 읽기 속도 개선이 관찰됐으나 측정한 고정·안구 운동 변수 변화는 관찰되지 않았습니다.
+
+이 앱의 좌우 교대 및 자리 채우기는 위 연구에서 착안한 사용자 요청을 구현한 것으로 연구 프로토콜의 복제나 치료 기능이 아닙니다. 건강한 독자에게 적용할 보편적인 최적 속도는 이 자료에서 확정할 수 없습니다. 기본값과 범위는 시선 이동 시간을 확보한 제품 설계값입니다. 읽기 이해와 따라가기 쉬운 정도에 맞춰 속도를 조절합니다. 문장 시작은 400ms 준비 시간을 둡니다. 긴 문장은 원문 배치를 바꾸지 않고 화면 높이에 맞춰 줄 단위로 넘어갑니다. 매우 긴 한 단어는 표시 영역을 위아래로 스크롤해서 확인할 수 있습니다.
+
+## 검증
+
+JVM 단위 테스트는 표시 원문 범위·결합 문자·단위별 속도·문장부호 지연과 기존 문서/목차/캐시 동작을 검사합니다. 별도 브랜치 CI는 Android 35 에뮬레이터에서 모드 전환, 누적/현재 표시, 글자 이동, 일시정지, 설정 저장, 앱 식별자를 확인하며 화면과 테스트 결과를 artifact로 남깁니다.

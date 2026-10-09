@@ -432,6 +432,7 @@ fun ReaderScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
+        val eyeDisplayHeight = (maxHeight * 0.38f).coerceIn(100.dp, 300.dp)
         val shift = if (fullTextOpen) -0.18f else 0f
         val shiftPx = constraints.maxWidth.toFloat() * shift
 
@@ -508,7 +509,7 @@ fun ReaderScreen(
                     leftSide = if (ttsMode) safeIndex % 2 == 0 else leftSide,
                     revealed = ttsMode || revealReady,
                     settings = settings,
-                    modifier = Modifier.fillMaxWidth().height((maxHeight * 0.38f).coerceIn(100.dp, 300.dp))
+                    modifier = Modifier.fillMaxWidth().height(eyeDisplayHeight)
                 )
                 HorizontalDivider()
             }
@@ -534,7 +535,7 @@ fun ReaderScreen(
                     leftSide = if (ttsMode) safeIndex % 2 == 0 else leftSide,
                     revealed = ttsMode || revealReady,
                     settings = settings,
-                    modifier = Modifier.fillMaxWidth().height((maxHeight * 0.38f).coerceIn(100.dp, 300.dp))
+                    modifier = Modifier.fillMaxWidth().height(eyeDisplayHeight)
                 )
             }
 

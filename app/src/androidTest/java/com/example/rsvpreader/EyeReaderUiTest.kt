@@ -1,6 +1,7 @@
 package com.example.rsvpreader
 
 import android.graphics.Bitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
@@ -68,6 +69,47 @@ class EyeReaderUiTest {
         rule.onNodeWithContentDescription("재생").performClick()
         rule.onNodeWithContentDescription("일시정지").performClick()
         rule.onNodeWithContentDescription("재생").assertExists()
+    }
+
+    @Test fun fixedLayoutCoordinatesAndLeftRightTargetsStayStable() {
+        openReader()
+        rule.onNodeWithContentDescription("읽기 모드 선택").performClick()
+        rule.onNodeWithText("자리 채우기", useUnmergedTree = true).performClick()
+        rule.onNodeWithText("적용").performClick()
+        rule.waitForIdle()
+        val first = rule.onNodeWithTag("eye-stage").captureToImage().asAndroidBitmap()
+        rule.onNodeWithContentDescription("다음 토큰").performClick()
+        rule.waitForIdle()
+        val second = rule.onNodeWithTag("eye-stage").captureToImage().asAndroidBitmap()
+        var colored = 0
+        var added = 0
+        fun ink(pixel: Int): Boolean = android.graphics.Color.red(pixel) > 150 &&
+            android.graphics.Color.green(pixel) in 20..150 && android.graphics.Color.blue(pixel) < 100
+        for (y in 0 until first.height) for (x in 0 until first.width) {
+            val before = first.getPixel(x, y)
+            val after = second.getPixel(x, y)
+            if (ink(before)) {
+                colored++
+                org.junit.Assert.assertEquals("Previously revealed glyph shifted", before, after)
+            } else if (ink(after)) added++
+        }
+        org.junit.Assert.assertTrue("First word actually rendered", colored > 50)
+        org.junit.Assert.assertTrue("Second word fills its own position", added > 50)
+        screenshot("fixed-coordinate-check")
+        rule.onNodeWithContentDescription("읽기 모드 선택").performClick()
+        rule.onNodeWithText("좌우 교대", useUnmergedTree = true).performClick()
+        rule.onNodeWithText("글자 단위", useUnmergedTree = true).performClick()
+        rule.onNodeWithText("적용").performClick()
+        rule.waitForIdle()
+        val left = rule.onNodeWithTag("eye-stage").captureToImage().asAndroidBitmap()
+        rule.onNodeWithContentDescription("다음 토큰").performClick()
+        rule.waitForIdle()
+        val right = rule.onNodeWithTag("eye-stage").captureToImage().asAndroidBitmap()
+        val leftInk = (0 until left.height).sumOf { y -> (0 until left.width / 2).count { x -> ink(left.getPixel(x,y)) } }
+        val rightInk = (0 until right.height).sumOf { y -> (right.width / 2 until right.width).count { x -> ink(right.getPixel(x,y)) } }
+        org.junit.Assert.assertTrue(leftInk > 50)
+        org.junit.Assert.assertTrue(rightInk > 50)
+        screenshot("alternating-side-check")
     }
 
     @Test fun settingsPersistWithoutSharingOriginalAppIdentity() {
