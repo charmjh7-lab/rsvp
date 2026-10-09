@@ -91,10 +91,15 @@ data class ReaderPosition(
 
 data class AppSettings(
     val wpm: Int = WPM_DEFAULT,
+    val eyeMode: EyeReadingMode = EyeReadingMode.ALTERNATING,
+    val eyeUnit: EyeReadingUnit = EyeReadingUnit.WORD,
+    val keepPrevious: Boolean = true,
+    val wordRate: Int = 100,
+    val characterRate: Int = 120,
     val focusColorArgb: Long = 0xFFE65100,
     val showFocusColor: Boolean = true,
     val contextFontSp: Float = 20f,
-    val rsvpFontSp: Float = 46f,
+    val rsvpFontSp: Float = 30f,
     val darkMode: Boolean = false,
     val lightBackground: LightBackground = LightBackground.WHITE,
     val punctuationDelay: Boolean = true,
@@ -105,6 +110,8 @@ data class AppSettings(
     val lastTtsMode: Boolean = false,
     val rsvpAtTop: Boolean = false
 ) {
+    val eyeRate: Int get() = if (eyeUnit == EyeReadingUnit.WORD) wordRate else characterRate
+    fun withEyeRate(rate: Int): AppSettings = if (eyeUnit == EyeReadingUnit.WORD) copy(wordRate = rate.coerceIn(EYE_RATE_MIN, EYE_RATE_MAX)) else copy(characterRate = rate.coerceIn(EYE_RATE_MIN, EYE_RATE_MAX))
     val focusColor: Color get() = Color(focusColorArgb.toInt())
     val effectiveFocusColor: Color get() = if (darkMode) adaptFocusColorForDark(focusColor) else focusColor
 }

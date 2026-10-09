@@ -2,7 +2,7 @@ name: Android Debug APK
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, development/eye-movement ]
   workflow_dispatch:
 
 permissions:
@@ -39,8 +39,38 @@ jobs:
       - name: Assemble debug APK
         run: gradle :app:assembleDebug --stacktrace
 
+      - name: Enable KVM
+        if: github.ref == 'refs/heads/development/eye-movement'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Android reading mode UI tests
+        if: github.ref == 'refs/heads/development/eye-movement'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          script: |
+            gradle :app:connectedDebugAndroidTest --stacktrace
+            mkdir -p ui-evidence
+            adb pull /sdcard/Android/data/com.example.eyemovementreader/files/. ui-evidence/
+
+      - name: Upload UI evidence
+        if: always() && github.ref == 'refs/heads/development/eye-movement'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Eye-Reader-ui-evidence
+          path: |
+            ui-evidence
+            app/build/reports/androidTests
+            app/build/reports/tests
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: RSVP-Reader-debug-apk
+          name: Eye-Reader-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk

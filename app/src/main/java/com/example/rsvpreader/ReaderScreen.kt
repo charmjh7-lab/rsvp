@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Subject
 import androidx.compose.material.icons.filled.Settings
@@ -123,6 +124,10 @@ fun ReaderScreen(
         mutableIntStateOf(initialSession?.globalTokenIndex ?: document?.globalTokenIndex ?: 0)
     }
     var isPlaying by remember { mutableStateOf(false) }
+    var sliceIndex by remember(documentId) { mutableIntStateOf(0) }
+    var leftSide by remember(documentId) { mutableStateOf(true) }
+    var revealReady by remember(documentId) { mutableStateOf(false) }
+    var modeDialog by remember { mutableStateOf(false) }
     var speedDialog by remember { mutableStateOf(false) }
     var fullTextOpen by remember { mutableStateOf(false) }
     var ttsMode by remember(documentId) { mutableStateOf(settings.lastTtsMode) }
@@ -213,6 +218,8 @@ fun ReaderScreen(
 
     val safeIndex = currentIndex.coerceIn(0, data.tokens.lastIndex)
     val currentToken = data.tokens[safeIndex]
+    val slices = remember(currentToken, settings.eyeUnit, ttsMode) { eyeReadingSlices(currentToken, if (ttsMode) EyeReadingUnit.WORD else settings.eyeUnit) }
+    val activeSlice = slices[sliceIndex.coerceIn(0, slices.lastIndex)]
     val currentSentenceIndex = currentToken.sentenceIndex
     val progress = if (data.tokens.size <= 1) 1f else safeIndex.toFloat() / data.tokens.lastIndex.toFloat()
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -316,16 +323,39 @@ fun ReaderScreen(
         val continueTts = ttsMode && isPlaying
         if (continueTts) ttsController.stop()
         currentIndex = target
+        sliceIndex = 0
+        leftSide = true
+        revealReady = true
         if (continueTts && !startTtsAt(target)) {
             isPlaying = false
             ttsNotice = "이 위치부터 TTS를 다시 시작하지 못했습니다."
         }
     }
 
+    fun moveByUnit(direction: Int) {
+        if (!ttsMode && settings.eyeUnit == EyeReadingUnit.CHARACTER) {
+            val candidate = sliceIndex + direction
+            if (candidate in slices.indices) {
+                sliceIndex = candidate
+                leftSide = !leftSide
+                revealReady = true
+            } else {
+                val target = currentIndex + direction
+                if (target in data.tokens.indices) {
+                    moveTo(target)
+                    if (direction < 0) sliceIndex = eyeReadingSlices(data.tokens[target], settings.eyeUnit).lastIndex
+                }
+            }
+        } else moveTo(currentIndex + direction)
+    }
+
     fun moveToAndPlay(index: Int) {
         val target = index.coerceIn(0, data.tokens.lastIndex)
         ttsController.stop()
         currentIndex = target
+        sliceIndex = 0
+        leftSide = true
+        revealReady = false
         if (ttsMode) {
             if (!ttsReady) {
                 isPlaying = false
@@ -372,17 +402,30 @@ fun ReaderScreen(
         }
     }
 
-    LaunchedEffect(isPlaying, ttsMode, currentIndex, settings.wpm, settings.punctuationDelay, settings.longWordDelay) {
+    LaunchedEffect(isPlaying, ttsMode, currentIndex, sliceIndex, settings.eyeMode, settings.eyeUnit, settings.eyeRate, settings.punctuationDelay, settings.longWordDelay) {
         if (!isPlaying || ttsMode) return@LaunchedEffect
-        val token = data.tokens[currentIndex]
-        delay(delayFor(token, settings))
-        if (currentIndex < data.tokens.lastIndex) currentIndex++ else isPlaying = false
+        if (!revealReady) {
+            delay(400L)
+            revealReady = true
+        }
+        delay(eyeReadingDelay(currentToken, activeSlice, settings))
+        if (sliceIndex < slices.lastIndex) {
+            sliceIndex++
+            leftSide = !leftSide
+        } else if (currentIndex < data.tokens.lastIndex) {
+            val next = currentIndex + 1
+            if (data.tokens[next].sentenceIndex != currentSentenceIndex) revealReady = false
+            sliceIndex = 0
+            leftSide = !leftSide
+            currentIndex = next
+        } else isPlaying = false
     }
 
     BackHandler(enabled = fullTextOpen) {
         fullTextOpen = false
     }
     BackHandler(enabled = speedDialog) { speedDialog = false }
+    BackHandler(enabled = modeDialog) { modeDialog = false }
 
     BoxWithConstraints(
         Modifier
@@ -413,12 +456,14 @@ fun ReaderScreen(
                         ttsController.stop()
                         ttsNotice = null
                         val nextMode = !ttsMode
+                        sliceIndex = 0
+                        revealReady = true
                         ttsMode = nextMode
                         onSettingsChange(settings.copy(lastTtsMode = nextMode))
                     }) {
                         Icon(
                             if (ttsMode) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
-                            if (ttsMode) "TTS 모드 사용 중" else "일반 RSVP 모드 사용 중",
+                            if (ttsMode) "TTS 모드 사용 중" else "안구 이동 모드 사용 중",
                             tint = if (ttsMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -431,9 +476,14 @@ fun ReaderScreen(
                         Spacer(Modifier.width(4.dp))
                         Text(
                             if (ttsMode) String.format(Locale.US, "%.1f×", settings.ttsRate)
-                            else "${settings.wpm} WPM"
+                            else "${settings.eyeRate}/분"
                         )
                     }
+                    IconButton(onClick = {
+                        isPlaying = false
+                        ttsController.stop()
+                        modeDialog = true
+                    }) { Icon(Icons.Default.SwapHoriz, "읽기 모드 선택") }
                     IconButton(onClick = {
                         isPlaying = false
                         ttsController.stop()
@@ -452,11 +502,13 @@ fun ReaderScreen(
             }
 
             if (settings.rsvpAtTop) {
-                RSVPWordDisplay(
-                    previousToken = data.tokens.getOrNull(currentIndex - 1)?.display,
-                    token = currentToken,
-                    nextToken = data.tokens.getOrNull(currentIndex + 1)?.display,
-                    settings = settings
+                EyeReadingDisplay(
+                    sentence = data.sentences[currentSentenceIndex],
+                    slice = activeSlice,
+                    leftSide = if (ttsMode) safeIndex % 2 == 0 else leftSide,
+                    revealed = ttsMode || revealReady,
+                    settings = settings,
+                    modifier = Modifier.fillMaxWidth().height((maxHeight * 0.38f).coerceIn(100.dp, 300.dp))
                 )
                 HorizontalDivider()
             }
@@ -476,28 +528,30 @@ fun ReaderScreen(
 
             if (!settings.rsvpAtTop) {
                 HorizontalDivider()
-                RSVPWordDisplay(
-                    previousToken = data.tokens.getOrNull(currentIndex - 1)?.display,
-                    token = currentToken,
-                    nextToken = data.tokens.getOrNull(currentIndex + 1)?.display,
-                    settings = settings
+                EyeReadingDisplay(
+                    sentence = data.sentences[currentSentenceIndex],
+                    slice = activeSlice,
+                    leftSide = if (ttsMode) safeIndex % 2 == 0 else leftSide,
+                    revealed = ttsMode || revealReady,
+                    settings = settings,
+                    modifier = Modifier.fillMaxWidth().height((maxHeight * 0.38f).coerceIn(100.dp, 300.dp))
                 )
             }
 
             PlaybackControls(
                 isPlaying = isPlaying,
                 canPreviousSentence = currentSentenceIndex > 0,
-                canPrevious = currentIndex > 0,
-                canNext = currentIndex < data.tokens.lastIndex,
+                canPrevious = currentIndex > 0 || (!ttsMode && sliceIndex > 0),
+                canNext = currentIndex < data.tokens.lastIndex || (!ttsMode && sliceIndex < slices.lastIndex),
                 canNextSentence = currentSentenceIndex < data.sentences.lastIndex,
                 onPreviousSentence = {
                     data.sentences.getOrNull(currentSentenceIndex - 1)
                         ?.takeIf { it.tokenCount > 0 }
                         ?.let { moveTo(it.tokenStartGlobal) }
                 },
-                onPrevious = { moveTo(currentIndex - 1) },
+                onPrevious = { moveByUnit(-1) },
                 onPlayPause = { togglePlayback() },
-                onNext = { moveTo(currentIndex + 1) },
+                onNext = { moveByUnit(1) },
                 onNextSentence = {
                     data.sentences.getOrNull(currentSentenceIndex + 1)
                         ?.takeIf { it.tokenCount > 0 }
@@ -564,6 +618,14 @@ fun ReaderScreen(
         }
     }
 
+    if (modeDialog) {
+        EyeModeDialog(settings, onChange = {
+            sliceIndex = 0
+            revealReady = true
+            leftSide = true
+            onSettingsChange(it)
+        }, onDismiss = { modeDialog = false })
+    }
     if (speedDialog) {
         if (ttsMode) {
             TtsSpeedDialog(
@@ -577,8 +639,9 @@ fun ReaderScreen(
             )
         } else {
             SpeedDialog(
-                wpm = settings.wpm,
-                onWpmChange = { onSettingsChange(settings.copy(wpm = it.coerceIn(WPM_MIN, WPM_MAX))) },
+                wpm = settings.eyeRate,
+                unitLabel = settings.eyeUnit.label,
+                onWpmChange = { onSettingsChange(settings.withEyeRate(it)) },
                 onDismiss = { speedDialog = false }
             )
         }
@@ -616,26 +679,6 @@ private fun tokenIndexForTtsRange(
         ?: tokens.firstOrNull { globalStart < it.endExclusive && globalEnd > it.start }?.globalIndex
         ?: tokens.firstOrNull { it.start >= globalStart }?.globalIndex
         ?: tokens.lastOrNull()?.globalIndex
-}
-
-private fun delayFor(token: RsvpToken, settings: AppSettings): Long {
-    val base = 60_000.0 / settings.wpm.coerceIn(WPM_MIN, WPM_MAX)
-    val punctuationMultiplier = if (settings.punctuationDelay) {
-        when {
-            token.strongPause -> 1.65
-            token.weakPause -> 1.25
-            else -> 1.0
-        }
-    } else {
-        1.0
-    }
-    val longWordMultiplier = if (settings.longWordDelay) {
-        longWordDelayMultiplier(token.display)
-    } else {
-        1.0
-    }
-    val multiplier = maxOf(punctuationMultiplier, longWordMultiplier)
-    return (base * multiplier).roundToInt().toLong().coerceAtLeast(30L)
 }
 
 @Composable
@@ -750,26 +793,6 @@ private fun ContextWindow(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun RSVPWordDisplay(
-    previousToken: String?,
-    token: RsvpToken,
-    nextToken: String?,
-    settings: AppSettings
-) {
-    Box(
-        modifier = Modifier.fillMaxWidth().height(118.dp).padding(horizontal = 12.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        FocusToken(
-            previousText = previousToken,
-            text = token.display,
-            nextText = nextToken,
-            settings = settings
-        )
     }
 }
 
@@ -934,149 +957,6 @@ private fun PlaybackNavigationButton(
 }
 
 @Composable
-private fun FocusToken(
-    previousText: String?,
-    text: String,
-    nextText: String?,
-    settings: AppSettings
-) {
-    val measurer = rememberTextMeasurer()
-    val density = LocalDensity.current
-    val focusRange = remember(text) { TextProcessor.focusGraphemeRange(text) }
-    val lexicalGraphemeCount = remember(text) {
-        TextProcessor.graphemeRanges(text).count { range ->
-            text.substring(range.first, range.last + 1).any(Char::isLetter)
-        }
-    }
-    val baseColor = MaterialTheme.colorScheme.onSurface
-    val neighborColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
-    val focusColor = if (settings.showFocusColor) settings.effectiveFocusColor else baseColor
-    val annotated = remember(text, focusRange, focusColor) {
-        AnnotatedString.Builder(text).apply {
-            if (focusRange != null) {
-                addStyle(
-                    SpanStyle(color = focusColor, fontWeight = FontWeight.Bold),
-                    focusRange.first,
-                    focusRange.last + 1
-                )
-            }
-        }.toAnnotatedString()
-    }
-
-    BoxWithConstraints(Modifier.fillMaxWidth().height(94.dp)) {
-        val availableWidthPx = with(density) { maxWidth.toPx() }
-        val edgePaddingPx = with(density) { 8.dp.toPx() }
-        val baseStyle = TextStyle(
-            fontSize = settings.rsvpFontSp.sp,
-            color = baseColor,
-            fontWeight = FontWeight.Medium
-        )
-        val requestedResult = remember(annotated, settings.rsvpFontSp, baseColor) {
-            measurer.measure(text = annotated, style = baseStyle)
-        }
-        val plainRequestedResult = remember(text, settings.rsvpFontSp, baseColor) {
-            measurer.measure(text = AnnotatedString(text), style = baseStyle)
-        }
-        val typicalLatinGlyphWidth = remember(settings.rsvpFontSp, baseColor) {
-            measurer.measure(
-                text = AnnotatedString("nnnnnnnnnn"),
-                style = baseStyle
-            ).size.width / 10f
-        }.coerceAtLeast(1f)
-
-        val requestedFocusCenter = if (focusRange != null && text.isNotEmpty()) {
-            val first = requestedResult.getBoundingBox(focusRange.first)
-            val last = requestedResult.getBoundingBox(focusRange.last.coerceAtMost(text.lastIndex))
-            (first.left + last.right) / 2f
-        } else {
-            requestedResult.size.width / 2f
-        }
-        val requiredHalfWidth = maxOf(
-            requestedFocusCenter,
-            requestedResult.size.width - requestedFocusCenter
-        ).coerceAtLeast(1f)
-        val usableHalfWidth = (availableWidthPx / 2f - edgePaddingPx).coerceAtLeast(1f)
-        val latinEquivalentCharacters = if (classifyRsvpTokenLanguage(text) == RsvpTokenLanguage.LATIN) {
-            plainRequestedResult.size.width / typicalLatinGlyphWidth
-        } else {
-            null
-        }
-        val proactiveScale = proactiveRsvpScale(
-            text = text,
-            graphemeCount = lexicalGraphemeCount,
-            latinEquivalentCharacters = latinEquivalentCharacters
-        )
-        val widthScale = widthFitRsvpScale(requiredHalfWidth, usableHalfWidth)
-        val effectiveFontSp = effectiveRsvpFontSp(
-            baseFontSp = settings.rsvpFontSp,
-            proactiveScale = proactiveScale,
-            widthFitScale = widthScale
-        )
-
-        val currentResult = remember(annotated, effectiveFontSp, baseColor) {
-            measurer.measure(
-                text = annotated,
-                style = TextStyle(
-                    fontSize = effectiveFontSp.sp,
-                    color = baseColor,
-                    fontWeight = FontWeight.Medium
-                )
-            )
-        }
-        val neighborFontSp = effectiveFontSp * 0.62f
-        val previousResult = remember(previousText, neighborFontSp, neighborColor) {
-            previousText?.let {
-                measurer.measure(
-                    text = AnnotatedString(it),
-                    style = TextStyle(fontSize = neighborFontSp.sp, color = neighborColor)
-                )
-            }
-        }
-        val nextResult = remember(nextText, neighborFontSp, neighborColor) {
-            nextText?.let {
-                measurer.measure(
-                    text = AnnotatedString(it),
-                    style = TextStyle(fontSize = neighborFontSp.sp, color = neighborColor)
-                )
-            }
-        }
-
-        Canvas(Modifier.fillMaxSize()) {
-            val focusCenter = if (focusRange != null && text.isNotEmpty()) {
-                val first = currentResult.getBoundingBox(focusRange.first)
-                val last = currentResult.getBoundingBox(focusRange.last.coerceAtMost(text.lastIndex))
-                (first.left + last.right) / 2f
-            } else {
-                currentResult.size.width / 2f
-            }
-            val currentX = size.width / 2f - focusCenter
-            val currentY = (size.height - currentResult.size.height) / 2f
-            val gap = 22.dp.toPx()
-
-            previousResult?.let { previous ->
-                drawText(
-                    textLayoutResult = previous,
-                    topLeft = Offset(
-                        currentX - gap - previous.size.width,
-                        (size.height - previous.size.height) / 2f
-                    )
-                )
-            }
-            drawText(textLayoutResult = currentResult, topLeft = Offset(currentX, currentY))
-            nextResult?.let { next ->
-                drawText(
-                    textLayoutResult = next,
-                    topLeft = Offset(
-                        currentX + currentResult.size.width + gap,
-                        (size.height - next.size.height) / 2f
-                    )
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun FullTextPanel(
     data: ProcessedDocument,
     toc: List<DocumentTocEntry>,
@@ -1188,7 +1068,7 @@ private fun FullTextPanel(
 }
 
 @Composable
-private fun SpeedDialog(wpm: Int, onWpmChange: (Int) -> Unit, onDismiss: () -> Unit) {
+private fun SpeedDialog(wpm: Int, unitLabel: String, onWpmChange: (Int) -> Unit, onDismiss: () -> Unit) {
     var directInput by remember { mutableStateOf(false) }
     var input by remember(wpm) { mutableStateOf(wpm.toString()) }
     AlertDialog(
@@ -1200,34 +1080,34 @@ private fun SpeedDialog(wpm: Int, onWpmChange: (Int) -> Unit, onDismiss: () -> U
                     TextField(
                         value = input,
                         onValueChange = { input = it.filter(Char::isDigit).take(3) },
-                        label = { Text("WPM ($WPM_MIN–$WPM_MAX)") },
+                        label = { Text("분당 $unitLabel 표시 ($EYE_RATE_MIN–$EYE_RATE_MAX)") },
                         singleLine = true
                     )
                     Spacer(Modifier.height(8.dp))
                     Button(onClick = {
                         input.toIntOrNull()?.let {
-                            val clamped = it.coerceIn(WPM_MIN, WPM_MAX)
+                            val clamped = it.coerceIn(EYE_RATE_MIN, EYE_RATE_MAX)
                             onWpmChange(clamped)
                             input = clamped.toString()
                         }
                         directInput = false
                     }) { Text("적용") }
                 } else {
-                    Text("$wpm WPM", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.clickable { input = wpm.toString(); directInput = true }.padding(8.dp))
+                    Text("$wpm $unitLabel/분", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.clickable { input = wpm.toString(); directInput = true }.padding(8.dp))
                 }
                 Spacer(Modifier.height(12.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = { onWpmChange((wpm - 10).coerceAtLeast(WPM_MIN)) }) { Text("−", style = MaterialTheme.typography.headlineSmall) }
+                    TextButton(onClick = { onWpmChange((wpm - 10).coerceAtLeast(EYE_RATE_MIN)) }) { Text("−", style = MaterialTheme.typography.headlineSmall) }
                     Slider(
-                        value = wpm.coerceIn(WPM_MIN, WPM_MAX).toFloat(),
-                        onValueChange = { onWpmChange(((it / 10).roundToInt() * 10).coerceIn(WPM_MIN, WPM_MAX)) },
-                        valueRange = WPM_MIN.toFloat()..WPM_MAX.toFloat(),
-                        steps = ((WPM_MAX - WPM_MIN) / 10 - 1).coerceAtLeast(0),
+                        value = wpm.coerceIn(EYE_RATE_MIN, EYE_RATE_MAX).toFloat(),
+                        onValueChange = { onWpmChange(((it / 10).roundToInt() * 10).coerceIn(EYE_RATE_MIN, EYE_RATE_MAX)) },
+                        valueRange = EYE_RATE_MIN.toFloat()..EYE_RATE_MAX.toFloat(),
+                        steps = ((EYE_RATE_MAX - EYE_RATE_MIN) / 10 - 1).coerceAtLeast(0),
                         modifier = Modifier.weight(1f)
                     )
-                    TextButton(onClick = { onWpmChange((wpm + 10).coerceAtMost(WPM_MAX)) }) { Text("+", style = MaterialTheme.typography.headlineSmall) }
+                    TextButton(onClick = { onWpmChange((wpm + 10).coerceAtMost(EYE_RATE_MAX)) }) { Text("+", style = MaterialTheme.typography.headlineSmall) }
                 }
-                Text("숫자를 누르면 직접 입력할 수 있습니다.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("숫자를 누르면 직접 입력할 수 있습니다. 표시 간격은 약 ${60_000 / wpm}ms이며 문장부호·긴 단어는 더 오래 표시됩니다.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("닫기") } }
@@ -1263,7 +1143,7 @@ private fun TtsSpeedDialog(rate: Float, onRateChange: (Float) -> Unit, onDismiss
                     }) { Text("+", style = MaterialTheme.typography.headlineSmall) }
                 }
                 Text(
-                    "TTS 모드에서는 WPM·문장부호 지연 대신 실제 음성 재생 시간이 기준이 됩니다.",
+                    "TTS 모드에서는 표시 속도·문장부호 지연 대신 실제 음성 재생 시간이 기준이 됩니다.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

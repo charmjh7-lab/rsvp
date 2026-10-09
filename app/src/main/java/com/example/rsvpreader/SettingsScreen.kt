@@ -91,8 +91,8 @@ fun SettingsScreen(settings: AppSettings, onChange: (AppSettings) -> Unit, onBac
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp)
         ) {
             SectionTitle("화면")
-            SettingSwitch("집중 글자 색상 표시", settings.showFocusColor) { onChange(settings.copy(showFocusColor = it)) }
-            Text("집중색", style = MaterialTheme.typography.labelLarge)
+            SettingSwitch("읽기 글자에 색상 사용", settings.showFocusColor) { onChange(settings.copy(showFocusColor = it)) }
+            Text("읽기 글자·본문 위치 색상", style = MaterialTheme.typography.labelLarge)
             Spacer(Modifier.height(10.dp))
             val colors = listOf(0xFFE65100, 0xFF1565C0, 0xFF2E7D32, 0xFF7B1FA2, 0xFFC62828, 0xFF00838F)
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -110,7 +110,7 @@ fun SettingsScreen(settings: AppSettings, onChange: (AppSettings) -> Unit, onBac
             }
             Spacer(Modifier.height(18.dp))
             SettingPicker(
-                label = "RSVP 단어 표시 위치",
+                label = "안구 이동 영역 위치",
                 selectedLabel = if (settings.rsvpAtTop) "상단" else "하단",
                 choices = listOf(
                     SettingChoice("top", "상단"),
@@ -154,11 +154,11 @@ fun SettingsScreen(settings: AppSettings, onChange: (AppSettings) -> Unit, onBac
                 onValueChange = { onChange(settings.copy(contextFontSp = it)) },
                 valueRange = 14f..34f
             )
-            Text("RSVP 단어 ${settings.rsvpFontSp.roundToInt()}sp")
+            Text("안구 이동 글자 ${settings.rsvpFontSp.roundToInt()}sp")
             Slider(
                 value = settings.rsvpFontSp,
                 onValueChange = { onChange(settings.copy(rsvpFontSp = it)) },
-                valueRange = 28f..80f
+                valueRange = 18f..60f
             )
 
             Spacer(Modifier.height(18.dp))
@@ -174,7 +174,7 @@ fun SettingsScreen(settings: AppSettings, onChange: (AppSettings) -> Unit, onBac
             Spacer(Modifier.height(10.dp))
             SettingSwitch("긴 단어 추가 시간", settings.longWordDelay) { onChange(settings.copy(longWordDelay = it)) }
             Text(
-                "13 grapheme 이상인 토큰에 약 30%의 추가 표시 시간을 줍니다.",
+                "단어 표시에서 한글 6글자·영문 11글자부터 시간을 늘립니다. 글자 표시는 적용하지 않습니다.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

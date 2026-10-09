@@ -24,7 +24,7 @@ jobs:
               { owner: context.repo.owner, repo: context.repo.repo, per_page: 100 }
             );
             const oldArtifacts = artifacts.filter(
-              artifact => !artifact.workflow_run || artifact.workflow_run.id !== currentRunId
+              artifact => artifact.name === (context.payload.workflow_run.head_branch === 'development/eye-movement' ? 'Eye-Reader-debug-apk' : 'RSVP-Reader-debug-apk') && (!artifact.workflow_run || artifact.workflow_run.id !== currentRunId)
             );
             core.info(`Keeping current run ${currentRunId}; removing ${oldArtifacts.length} older artifact(s)`);
             for (const artifact of oldArtifacts) {
