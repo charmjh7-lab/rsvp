@@ -35,9 +35,14 @@ class EyeReaderUiTest {
 
     private fun screenshot(name: String) {
         rule.waitForIdle()
+        val bitmap = rule.onRoot().captureToImage().asAndroidBitmap()
         val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
-        val output = automation.executeShellCommand("screencap -p /sdcard/Download/Eye-Reader-$name.png")
-        ParcelFileDescriptor.AutoCloseInputStream(output).use { it.readBytes() }
+        val pipe = automation.executeShellCommandRw("dd of=/sdcard/Download/Eye-Reader-$name.png")
+        ParcelFileDescriptor.AutoCloseOutputStream(pipe[1]).use {
+            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
+        }
+        ParcelFileDescriptor.AutoCloseInputStream(pipe[0]).use { it.readBytes() }
+        bitmap.recycle()
     }
 
     @Test fun modesNavigationAndPausePreserveReading() {
