@@ -112,6 +112,21 @@ class EyeReaderUiTest {
         screenshot("alternating-side-check")
     }
 
+    @Test fun characterPlaybackReachesFinalCharacterAndStops() {
+        openReader("가나 다라.")
+        rule.onNodeWithContentDescription("읽기 모드 선택").performClick()
+        rule.onNodeWithText("글자 단위", useUnmergedTree = true).performClick()
+        rule.onNodeWithText("적용").performClick()
+        rule.onNodeWithContentDescription("재생").performClick()
+        rule.waitUntil(8_000) {
+            rule.onAllNodesWithContentDescription(".").fetchSemanticsNodes().isNotEmpty() &&
+                rule.onAllNodesWithContentDescription("재생").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithContentDescription("이전 토큰").performClick()
+        rule.onNodeWithContentDescription("라").assertExists()
+        screenshot("character-completed")
+    }
+
     @Test fun settingsPersistWithoutSharingOriginalAppIdentity() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         org.junit.Assert.assertEquals("com.example.eyemovementreader", context.packageName)
