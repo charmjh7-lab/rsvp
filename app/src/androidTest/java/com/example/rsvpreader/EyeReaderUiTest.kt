@@ -21,6 +21,7 @@ class EyeReaderUiTest {
     private fun openReader(text: String = "안녕하세요 만나서 반갑습니다. 오늘은 눈을 움직이며 읽습니다.") {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val store = DocumentStore(context)
+        store.listDocuments().forEach { store.delete(it.id) }
         val entry = (store.addDocument("안구 이동 테스트", SourceType.PASTE, null, text) as ImportResult.Success).entry
         rule.activity.setContent {
             var settings by remember { mutableStateOf(AppSettings()) }
