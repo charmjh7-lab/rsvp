@@ -7,6 +7,8 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -79,6 +81,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -105,7 +108,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ReaderScreen(
     documentId: String,
@@ -221,6 +224,11 @@ fun ReaderScreen(
     val slices = remember(currentToken, settings.eyeUnit, ttsMode) { eyeReadingSlices(currentToken, if (ttsMode) EyeReadingUnit.WORD else settings.eyeUnit) }
     val activeSlice = slices[sliceIndex.coerceIn(0, slices.lastIndex)]
     val currentSentenceIndex = currentToken.sentenceIndex
+    val sentenceSlices = remember(data, currentSentenceIndex, settings.eyeUnit, ttsMode) {
+        val sentence = data.sentences[currentSentenceIndex]
+        data.tokens.subList(sentence.tokenStartGlobal, sentence.tokenStartGlobal + sentence.tokenCount)
+            .flatMap { eyeReadingSlices(it, if (ttsMode) EyeReadingUnit.WORD else settings.eyeUnit) }
+    }
     val progress = if (data.tokens.size <= 1) 1f else safeIndex.toFloat() / data.tokens.lastIndex.toFloat()
     val lifecycleOwner = LocalLifecycleOwner.current
     val latestIndex by rememberUpdatedState(currentIndex)
@@ -480,11 +488,26 @@ fun ReaderScreen(
                             else "${settings.eyeRate}/분"
                         )
                     }
-                    IconButton(onClick = {
-                        isPlaying = false
-                        ttsController.stop()
-                        modeDialog = true
-                    }) { Icon(Icons.Default.SwapHoriz, "읽기 모드 선택") }
+                    Box(
+                        Modifier.size(48.dp).clip(CircleShape).combinedClickable(
+                            role = Role.Button,
+                            onClickLabel = "읽기 모드 전환",
+                            onLongClickLabel = "읽기 모드 설정",
+                            onClick = {
+                                isPlaying = false
+                                ttsController.stop()
+                                revealReady = true
+                                leftSide = true
+                                onSettingsChange(settings.copy(eyeMode = if (settings.eyeMode == EyeReadingMode.ALTERNATING)
+                                    EyeReadingMode.FIXED_POSITION else EyeReadingMode.ALTERNATING))
+                            },
+                            onLongClick = {
+                                isPlaying = false
+                                ttsController.stop()
+                                modeDialog = true
+                            }
+                        ), contentAlignment = Alignment.Center
+                    ) { Icon(Icons.Default.SwapHoriz, "읽기 모드 선택") }
                     IconButton(onClick = {
                         isPlaying = false
                         ttsController.stop()
@@ -506,6 +529,7 @@ fun ReaderScreen(
                 EyeReadingDisplay(
                     sentence = data.sentences[currentSentenceIndex],
                     slice = activeSlice,
+                    sentenceSlices = sentenceSlices,
                     leftSide = if (ttsMode) safeIndex % 2 == 0 else leftSide,
                     revealed = ttsMode || revealReady,
                     settings = settings,
@@ -532,6 +556,7 @@ fun ReaderScreen(
                 EyeReadingDisplay(
                     sentence = data.sentences[currentSentenceIndex],
                     slice = activeSlice,
+                    sentenceSlices = sentenceSlices,
                     leftSide = if (ttsMode) safeIndex % 2 == 0 else leftSide,
                     revealed = ttsMode || revealReady,
                     settings = settings,

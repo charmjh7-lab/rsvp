@@ -4,6 +4,12 @@ import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -48,18 +54,17 @@ class EyeReaderUiTest {
     @Test fun modesNavigationAndPausePreserveReading() {
         openReader()
         rule.onNodeWithContentDescription("읽기 모드 선택").performClick()
-        rule.onNodeWithText("자리 채우기", useUnmergedTree = true).performClick()
-        rule.onNodeWithText("적용").performClick()
+        rule.onNodeWithText("안구 이동 읽기").assertDoesNotExist()
         screenshot("fixed-first")
         rule.onNodeWithContentDescription("다음 토큰").performClick()
         rule.onNodeWithContentDescription("안녕하세요 만나서").assertExists()
         screenshot("fixed-kept")
-        rule.onNodeWithContentDescription("읽기 모드 선택").performClick()
+        rule.onNodeWithContentDescription("읽기 모드 선택").performTouchInput { longClick() }
         rule.onNode(isToggleable()).performClick()
         rule.onNodeWithText("적용").performClick()
         rule.onNodeWithContentDescription("만나서").assertExists()
         screenshot("fixed-current")
-        rule.onNodeWithContentDescription("읽기 모드 선택").performClick()
+        rule.onNodeWithContentDescription("읽기 모드 선택").performTouchInput { longClick() }
         rule.onNodeWithText("좌우 교대", useUnmergedTree = true).performClick()
         rule.onNodeWithText("글자 단위", useUnmergedTree = true).performClick()
         rule.onNodeWithText("적용").performClick()
@@ -78,8 +83,7 @@ class EyeReaderUiTest {
     @Test fun fixedLayoutCoordinatesAndLeftRightTargetsStayStable() {
         openReader()
         rule.onNodeWithContentDescription("읽기 모드 선택").performClick()
-        rule.onNodeWithText("자리 채우기", useUnmergedTree = true).performClick()
-        rule.onNodeWithText("적용").performClick()
+        rule.onNodeWithText("안구 이동 읽기").assertDoesNotExist()
         rule.waitForIdle()
         val first = rule.onNodeWithTag("eye-stage").captureToImage().asAndroidBitmap()
         rule.onNodeWithContentDescription("다음 토큰").performClick()
@@ -100,7 +104,7 @@ class EyeReaderUiTest {
         org.junit.Assert.assertTrue("First word actually rendered", colored > 50)
         org.junit.Assert.assertTrue("Second word fills its own position", added > 50)
         screenshot("fixed-coordinate-check")
-        rule.onNodeWithContentDescription("읽기 모드 선택").performClick()
+        rule.onNodeWithContentDescription("읽기 모드 선택").performTouchInput { longClick() }
         rule.onNodeWithText("좌우 교대", useUnmergedTree = true).performClick()
         rule.onNodeWithText("글자 단위", useUnmergedTree = true).performClick()
         rule.onNodeWithText("적용").performClick()
@@ -118,7 +122,7 @@ class EyeReaderUiTest {
 
     @Test fun characterPlaybackReachesFinalCharacterAndStops() {
         openReader("가나 다라.")
-        rule.onNodeWithContentDescription("읽기 모드 선택").performClick()
+        rule.onNodeWithContentDescription("읽기 모드 선택").performTouchInput { longClick() }
         rule.onNodeWithText("글자 단위", useUnmergedTree = true).performClick()
         rule.onNodeWithText("적용").performClick()
         rule.onNodeWithContentDescription("재생").performClick()
@@ -129,6 +133,89 @@ class EyeReaderUiTest {
         rule.onNodeWithContentDescription("이전 토큰").performClick()
         rule.onNodeWithContentDescription("라").assertExists()
         screenshot("character-completed")
+    }
+
+
+    @Test fun tapSwitchesModeAndLongPressOnlyOpensSettings() {
+        openReader()
+        val button = rule.onNodeWithContentDescription("읽기 모드 선택")
+        button.performClick()
+        rule.onNodeWithText("자리 채우기 · 단어 · 앞부분 유지").assertExists()
+        rule.onNodeWithText("안구 이동 읽기").assertDoesNotExist()
+        button.performTouchInput { longClick() }
+        rule.onNodeWithText("안구 이동 읽기").assertExists()
+        rule.onNodeWithText("자리 채우기", useUnmergedTree = true).assertExists()
+        rule.onNodeWithText("글자 단위", useUnmergedTree = true).performClick()
+        rule.onNode(isToggleable()).performClick()
+        rule.onNodeWithText("적용").performClick()
+        rule.onNodeWithText("자리 채우기 · 글자 · 현재만 표시").assertExists()
+        rule.onNodeWithContentDescription("다음 토큰").performClick()
+        rule.onNodeWithContentDescription("녕").assertExists()
+        button.performClick()
+        rule.onNodeWithText("좌우 교대 · 글자").assertExists()
+        rule.onNodeWithContentDescription("녕").assertExists()
+        button.performClick()
+        rule.onNodeWithText("자리 채우기 · 글자 · 현재만 표시").assertExists()
+        rule.onNodeWithContentDescription("녕").assertExists()
+        rule.onNodeWithText("안구 이동 읽기").assertDoesNotExist()
+        screenshot("fixed-character-tap-switch")
+    }
+
+    @Test fun blankPositionGuidesStayPutForWordsAndCombinedCharacters() {
+        val doc = TextProcessor.process("안녕하세요 만나서 반갑습니다 cafe\u0301")
+        var unit by mutableStateOf(EyeReadingUnit.WORD)
+        var active by mutableIntStateOf(0)
+        var revealed by mutableStateOf(false)
+        rule.activity.setContent {
+            val slices = doc.tokens.flatMap { eyeReadingSlices(it, unit) }
+            MaterialTheme {
+                Surface(Modifier.fillMaxSize()) {
+                    EyeReadingDisplay(doc.sentences.single(), slices[active], slices, true, revealed,
+                        AppSettings(eyeMode = EyeReadingMode.FIXED_POSITION, eyeUnit = unit, keepPrevious = false),
+                        Modifier.fillMaxWidth().height(300.dp))
+                }
+            }
+        }
+        rule.waitForIdle()
+        val blank = rule.onNodeWithTag("eye-stage").captureToImage().asAndroidBitmap()
+        fun guide(pixel: Int): Boolean {
+            val r = android.graphics.Color.red(pixel)
+            val g = android.graphics.Color.green(pixel)
+            val b = android.graphics.Color.blue(pixel)
+            return r in 110..220 && maxOf(r, g, b) - minOf(r, g, b) < 20
+        }
+        val positions = buildList {
+            for (y in 0 until blank.height) for (x in 0 until blank.width) {
+                if (guide(blank.getPixel(x, y))) add(x to y)
+            }
+        }
+        org.junit.Assert.assertTrue("Empty words already have position guides", positions.size > 100)
+        screenshot("fixed-word-blank-guides")
+        rule.runOnIdle { revealed = true }
+        rule.waitForIdle()
+        val first = rule.onNodeWithTag("eye-stage").captureToImage().asAndroidBitmap()
+        rule.runOnIdle { active = 1 }
+        rule.onNodeWithContentDescription("만나서").assertExists()
+        val next = rule.onNodeWithTag("eye-stage").captureToImage().asAndroidBitmap()
+        positions.forEach { (x, y) ->
+            org.junit.Assert.assertEquals("First reveal moved a guide", blank.getPixel(x, y), first.getPixel(x, y))
+            org.junit.Assert.assertEquals("Hiding the previous word moved a guide", blank.getPixel(x, y), next.getPixel(x, y))
+        }
+        fun maxRuns(bitmap: Bitmap): Int = (0 until bitmap.height).maxOf { y ->
+            var runs = 0
+            var previous = false
+            for (x in 0 until bitmap.width) {
+                val current = guide(bitmap.getPixel(x, y))
+                if (current && !previous) runs++
+                previous = current
+            }
+            runs
+        }
+        rule.runOnIdle { unit = EyeReadingUnit.CHARACTER; active = 0; revealed = false }
+        rule.waitForIdle()
+        val characters = rule.onNodeWithTag("eye-stage").captureToImage().asAndroidBitmap()
+        org.junit.Assert.assertTrue("Character guides are separated into more positions", maxRuns(characters) > maxRuns(blank))
+        screenshot("fixed-character-blank-guides")
     }
 
     @Test fun settingsPersistWithoutSharingOriginalAppIdentity() {

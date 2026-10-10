@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.sp
 fun EyeReadingDisplay(
     sentence: SentenceUnit,
     slice: EyeReadingSlice,
+    sentenceSlices: List<EyeReadingSlice>,
     leftSide: Boolean,
     revealed: Boolean,
     settings: AppSettings,
@@ -37,6 +38,7 @@ fun EyeReadingDisplay(
     val density = LocalDensity.current
     val measurer = rememberTextMeasurer()
     val color = if (settings.showFocusColor) settings.effectiveFocusColor else MaterialTheme.colorScheme.onSurface
+    val guideColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
     Column(modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
         Text(
             settings.eyeMode.label + " · " + settings.eyeUnit.label +
@@ -73,6 +75,25 @@ fun EyeReadingDisplay(
                 val layout = remember(sentence.text, style, widthPx) {
                     measurer.measure(AnnotatedString(sentence.text), style, constraints = Constraints(maxWidth = widthPx))
                 }
+                // Each guide follows the same full-sentence layout as the glyphs.
+                // Split wrapped units by line, and leave gaps between character guides.
+                val guides = remember(layout, sentenceSlices, density) {
+                    buildList {
+                        sentenceSlices.forEach { unit ->
+                            val start = (unit.start - sentence.start).coerceIn(0, sentence.text.length)
+                            val end = (unit.endExclusive - sentence.start).coerceIn(start, sentence.text.length)
+                            (start until end).groupBy { layout.getLineForOffset(it) }.forEach { (line, offsets) ->
+                                val boxes = offsets.map { layout.getBoundingBox(it) }
+                                val left = boxes.minOf { it.left }
+                                val right = boxes.maxOf { it.right }
+                                val inset = minOf(with(density) { 2.dp.toPx() }, (right - left) * 0.15f)
+                                val y = minOf(layout.getLineBaseline(line) + with(density) { settings.rsvpFontSp.sp.toPx() } * 0.22f,
+                                    layout.getLineBottom(line) - with(density) { 2.dp.toPx() })
+                                if (right > left) add(Offset(left + inset, y) to Offset(right - inset, y))
+                            }
+                        }
+                    }
+                }
                 val range = eyeVisibleRange(sentence, slice, settings.keepPrevious)
                 val activeStart = (slice.start - sentence.start).coerceIn(0, sentence.text.lastIndex)
                 val activeEnd = (slice.endExclusive - sentence.start - 1).coerceIn(activeStart, sentence.text.lastIndex)
@@ -91,6 +112,13 @@ fun EyeReadingDisplay(
                     Canvas(Modifier.fillMaxWidth().height(with(density) { requiredHeight.toDp() }).semantics {
                         contentDescription = if (revealed && !range.isEmpty()) sentence.text.substring(range.first, range.last + 1) else "표시 준비"
                     }) {
+                        // Guides are visible during preparation and stay put when
+                        // previous words are hidden, without exposing their text.
+                        clipRect {
+                            guides.forEach { (start, end) ->
+                                drawLine(guideColor, start - Offset(0f, pageTop), end - Offset(0f, pageTop), strokeWidth = 1.dp.toPx())
+                            }
+                        }
                         if (revealed && !range.isEmpty()) {
                             val visiblePath = layout.getPathForRange(range.first, range.last + 1)
                             visiblePath.translate(Offset(0f, -pageTop))
@@ -118,7 +146,7 @@ fun EyeModeDialog(settings: AppSettings, onChange: (AppSettings) -> Unit, onDism
                         Text(mode.label)
                     }
                 }
-                Text(if (settings.eyeMode == EyeReadingMode.ALTERNATING) "왼쪽과 오른쪽을 번갈아 보며 이어 읽습니다." else "문장의 자리를 먼저 정한 뒤 순서대로 표시합니다. 긴 문장은 다음 줄·화면으로 이어집니다.", style = MaterialTheme.typography.bodySmall)
+                Text(if (settings.eyeMode == EyeReadingMode.ALTERNATING) "왼쪽과 오른쪽을 번갈아 보며 이어 읽습니다." else "밑줄로 단어·글자의 자리를 미리 안내하고 순서대로 표시합니다. 긴 문장은 다음 줄·화면으로 이어집니다.", style = MaterialTheme.typography.bodySmall)
                 HorizontalDivider(Modifier.padding(vertical = 10.dp))
                 EyeReadingUnit.entries.forEach { unit ->
                     Row(Modifier.fillMaxWidth().clickable { onChange(settings.copy(eyeUnit = unit)) }, verticalAlignment = Alignment.CenterVertically) {
