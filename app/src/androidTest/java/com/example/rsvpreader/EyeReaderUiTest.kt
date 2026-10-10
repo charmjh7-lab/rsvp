@@ -132,7 +132,7 @@ class EyeReaderUiTest {
                 rule.onAllNodesWithContentDescription("재생").fetchSemanticsNodes().isNotEmpty()
         }
         rule.onNodeWithContentDescription("이전 토큰").performClick()
-        rule.onNodeWithContentDescription("라").assertExists()
+        rule.onNodeWithContentDescription("라.").assertExists()
         screenshot("character-completed")
     }
 
@@ -151,13 +151,13 @@ class EyeReaderUiTest {
         rule.onNodeWithText("적용").performClick()
         rule.onNodeWithText("자리 채우기 · 글자 · 이동 창 · 3글자 공개").assertExists()
         rule.onNodeWithContentDescription("다음 토큰").performClick()
-        rule.onNodeWithContentDescription("녕").assertExists()
+        rule.onNodeWithContentDescription("녕하세").assertExists()
         button.performClick()
         rule.onNodeWithText("좌우 교대 · 글자").assertExists()
         rule.onNodeWithContentDescription("녕").assertExists()
         button.performClick()
         rule.onNodeWithText("자리 채우기 · 글자 · 이동 창 · 3글자 공개").assertExists()
-        rule.onNodeWithContentDescription("녕").assertExists()
+        rule.onNodeWithContentDescription("녕하세").assertExists()
         rule.onNodeWithText("안구 이동 읽기").assertDoesNotExist()
         screenshot("fixed-character-tap-switch")
     }
