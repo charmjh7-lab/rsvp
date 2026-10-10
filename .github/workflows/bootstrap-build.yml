@@ -61,40 +61,6 @@ jobs:
       - name: Assemble debug APK
         run: gradle :app:assembleDebug --stacktrace
 
-      - name: Enable KVM
-        if: github.ref == 'refs/heads/development/eye-movement'
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - name: Android reading mode UI tests
-        if: github.ref == 'refs/heads/development/eye-movement'
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          arch: x86_64
-          profile: pixel_2
-          disable-animations: true
-          script: |
-            gradle :app:connectedDebugAndroidTest --stacktrace
-            mkdir -p ui-evidence/regular ui-evidence/small
-            adb pull /sdcard/Download/. ui-evidence/regular/
-            adb shell wm size 640x1280
-            adb shell wm density 320
-            gradle :app:connectedDebugAndroidTest --stacktrace --rerun-tasks
-            adb pull /sdcard/Download/. ui-evidence/small/
-
-      - name: Upload UI evidence
-        if: always() && github.ref == 'refs/heads/development/eye-movement'
-        uses: actions/upload-artifact@v4
-        with:
-          name: Eye-Reader-ui-evidence
-          path: |
-            ui-evidence
-            app/build/reports/androidTests
-            app/build/reports/tests
-
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
@@ -109,7 +75,7 @@ jobs:
             const artifacts = await github.paginate(github.rest.actions.listArtifactsForRepo,
               {owner: context.repo.owner, repo: context.repo.repo, per_page: 100});
             for (const artifact of artifacts) {
-              if (['Eye-Reader-debug-apk', 'Eye-Reader-ui-evidence'].includes(artifact.name)
+              if (['Eye-Reader-debug-apk'].includes(artifact.name)
                   && artifact.workflow_run?.id !== context.runId) {
                 await github.rest.actions.deleteArtifact({owner: context.repo.owner,
                   repo: context.repo.repo, artifact_id: artifact.id});

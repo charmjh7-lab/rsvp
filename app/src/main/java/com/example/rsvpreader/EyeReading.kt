@@ -35,14 +35,18 @@ fun eyeVisibleRange(
     slice: EyeReadingSlice,
     sentenceSlices: List<EyeReadingSlice>,
     keepPrevious: Boolean,
-    previewCount: Int
+    previewCount: Int,
+    previousCount: Int = 0,
+    showAllFollowing: Boolean = false
 ): IntRange {
     if (sentenceSlices.isEmpty()) return 0 until 0
     val cursor = sentenceSlices.indexOfFirst { it.start == slice.start && it.endExclusive == slice.endExclusive }
     if (cursor < 0) return 0 until 0
-    val lastVisible = (cursor + previewCount.coerceIn(EYE_PREVIEW_MIN, EYE_PREVIEW_MAX) - 1)
-        .coerceAtMost(sentenceSlices.lastIndex)
-    val firstVisible = if (keepPrevious) 0 else cursor
+    val lastVisible = if (showAllFollowing) sentenceSlices.lastIndex else
+        (cursor + previewCount.coerceIn(EYE_PREVIEW_MIN, EYE_PREVIEW_MAX) - 1)
+            .coerceAtMost(sentenceSlices.lastIndex)
+    val firstVisible = if (keepPrevious) 0 else
+        (cursor - previousCount.coerceIn(0, EYE_PREVIEW_MAX)).coerceAtLeast(0)
     val start = (sentenceSlices[firstVisible].start - sentence.start).coerceIn(0, sentence.text.length)
     val end = (sentenceSlices[lastVisible].endExclusive - sentence.start).coerceIn(start, sentence.text.length)
     return start until end

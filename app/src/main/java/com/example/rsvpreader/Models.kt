@@ -95,6 +95,8 @@ data class AppSettings(
     val eyeUnit: EyeReadingUnit = EyeReadingUnit.WORD,
     val keepPrevious: Boolean = true,
     val eyePreviewCount: Int = EYE_PREVIEW_DEFAULT,
+    val eyePreviousCount: Int = 0,
+    val eyeShowAllFollowing: Boolean = false,
     val wordRate: Int = 100,
     val characterRate: Int = 120,
     val focusColorArgb: Long = 0xFFE65100,

@@ -44,8 +44,8 @@ fun EyeReadingDisplay(
         Text(
             settings.eyeMode.label + " · " + settings.eyeUnit.label +
                 if (settings.eyeMode == EyeReadingMode.FIXED_POSITION) {
-                    (if (settings.keepPrevious) " · 앞부분 유지" else " · 이동 창") +
-                        " · ${settings.eyePreviewCount}${settings.eyeUnit.label} 공개"
+                    (if (settings.keepPrevious) " · 앞부분 유지" else " · 이전 ${settings.eyePreviousCount}${settings.eyeUnit.label}") +
+                        (if (settings.eyeShowAllFollowing) " · 이후 전체" else " · ${settings.eyePreviewCount}${settings.eyeUnit.label} 공개")
                 } else "",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -98,7 +98,10 @@ fun EyeReadingDisplay(
                         }
                     }
                 }
-                val range = eyeVisibleRange(sentence, slice, sentenceSlices, settings.keepPrevious, settings.eyePreviewCount)
+                val range = eyeVisibleRange(
+                    sentence, slice, sentenceSlices, settings.keepPrevious, settings.eyePreviewCount,
+                    settings.eyePreviousCount, settings.eyeShowAllFollowing
+                )
                 val activeStart = (slice.start - sentence.start).coerceIn(0, sentence.text.lastIndex)
                 val activeEnd = (slice.endExclusive - sentence.start - 1).coerceIn(activeStart, sentence.text.lastIndex)
                 val firstLine = layout.getLineForOffset(activeStart)
@@ -170,20 +173,40 @@ fun EyeModeDialog(settings: AppSettings, onChange: (AppSettings) -> Unit, onDism
                         Text("앞부분 유지", Modifier.weight(1f))
                         Switch(settings.keepPrevious, { onChange(settings.copy(keepPrevious = it)) })
                     }
-                    Text("켜면 읽은 부분이 남고, 끄면 지정한 개수만 이동하며 표시됩니다.", style = MaterialTheme.typography.bodySmall)
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("동시 공개 ${settings.eyeUnit.label} 수", Modifier.weight(1f))
-                        TextButton(
-                            onClick = { onChange(settings.copy(eyePreviewCount = (settings.eyePreviewCount - 1).coerceAtLeast(EYE_PREVIEW_MIN))) },
-                            enabled = settings.eyePreviewCount > EYE_PREVIEW_MIN
-                        ) { Text("−") }
-                        Text("${settings.eyePreviewCount}")
-                        TextButton(
-                            onClick = { onChange(settings.copy(eyePreviewCount = (settings.eyePreviewCount + 1).coerceAtMost(EYE_PREVIEW_MAX))) },
-                            enabled = settings.eyePreviewCount < EYE_PREVIEW_MAX
-                        ) { Text("+") }
+                    Text("켜면 지나간 항목을 계속 남깁니다. 끄면 아래에서 이전 항목 수를 설정합니다.", style = MaterialTheme.typography.bodySmall)
+                    if (!settings.keepPrevious) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("이전 ${settings.eyeUnit.label} 표시", Modifier.weight(1f))
+                            TextButton(
+                                onClick = { onChange(settings.copy(eyePreviousCount = (settings.eyePreviousCount - 1).coerceAtLeast(0))) },
+                                enabled = settings.eyePreviousCount > 0
+                            ) { Text("−") }
+                            Text("${settings.eyePreviousCount}")
+                            TextButton(
+                                onClick = { onChange(settings.copy(eyePreviousCount = (settings.eyePreviousCount + 1).coerceAtMost(EYE_PREVIEW_MAX))) },
+                                enabled = settings.eyePreviousCount < EYE_PREVIEW_MAX
+                            ) { Text("+") }
+                        }
                     }
-                    Text("첫 단계부터 설정한 개수를 보여주고, 현재 읽을 항목만 강조합니다.", style = MaterialTheme.typography.bodySmall)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("이후 문장 끝까지 표시", Modifier.weight(1f))
+                        Switch(settings.eyeShowAllFollowing, { onChange(settings.copy(eyeShowAllFollowing = it)) })
+                    }
+                    if (!settings.eyeShowAllFollowing) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("동시 공개 ${settings.eyeUnit.label} 수", Modifier.weight(1f))
+                            TextButton(
+                                onClick = { onChange(settings.copy(eyePreviewCount = (settings.eyePreviewCount - 1).coerceAtLeast(EYE_PREVIEW_MIN))) },
+                                enabled = settings.eyePreviewCount > EYE_PREVIEW_MIN
+                            ) { Text("−") }
+                            Text("${settings.eyePreviewCount}")
+                            TextButton(
+                                onClick = { onChange(settings.copy(eyePreviewCount = (settings.eyePreviewCount + 1).coerceAtMost(EYE_PREVIEW_MAX))) },
+                                enabled = settings.eyePreviewCount < EYE_PREVIEW_MAX
+                            ) { Text("+") }
+                        }
+                    }
+                    Text("RAP 방식: 앞부분 유지 끔 · 이전 0개 · 이후 문장 끝까지 표시 켬. 현재 읽는 항목만 강조합니다.", style = MaterialTheme.typography.bodySmall)
                 }
                 Text("단어는 띄어쓰기·문장부호 기준, 글자는 결합 문자 기준으로 나눕니다. TTS 재생 중에는 음성이 가리키는 단어를 표시합니다.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 12.dp))
             }

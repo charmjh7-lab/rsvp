@@ -10,6 +10,8 @@ class AppSettingsStore(context: Context) {
         eyeUnit = runCatching { EyeReadingUnit.valueOf(prefs.getString("eyeUnit", null) ?: "WORD") }.getOrDefault(EyeReadingUnit.WORD),
         keepPrevious = prefs.getBoolean("keepPrevious", true),
         eyePreviewCount = prefs.getInt("eyePreviewCount", EYE_PREVIEW_DEFAULT).coerceIn(EYE_PREVIEW_MIN, EYE_PREVIEW_MAX),
+        eyePreviousCount = prefs.getInt("eyePreviousCount", 0).coerceIn(0, EYE_PREVIEW_MAX),
+        eyeShowAllFollowing = prefs.getBoolean("eyeShowAllFollowing", false),
         wordRate = prefs.getInt("wordRate", 100).coerceIn(EYE_RATE_MIN, EYE_RATE_MAX),
         characterRate = prefs.getInt("characterRate", 120).coerceIn(EYE_RATE_MIN, EYE_RATE_MAX),
         wpm = prefs.getInt("wpm", WPM_DEFAULT).coerceIn(WPM_MIN, WPM_MAX),
@@ -38,6 +40,8 @@ class AppSettingsStore(context: Context) {
             .putString("eyeUnit", settings.eyeUnit.name)
             .putBoolean("keepPrevious", settings.keepPrevious)
             .putInt("eyePreviewCount", settings.eyePreviewCount.coerceIn(EYE_PREVIEW_MIN, EYE_PREVIEW_MAX))
+            .putInt("eyePreviousCount", settings.eyePreviousCount.coerceIn(0, EYE_PREVIEW_MAX))
+            .putBoolean("eyeShowAllFollowing", settings.eyeShowAllFollowing)
             .putInt("wordRate", settings.wordRate)
             .putInt("characterRate", settings.characterRate)
             .putInt("wpm", settings.wpm.coerceIn(WPM_MIN, WPM_MAX))

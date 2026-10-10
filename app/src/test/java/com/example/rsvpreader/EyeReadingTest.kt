@@ -36,6 +36,30 @@ class EyeReadingTest {
         assertEquals("오늘은 날씨가 좋아서 산책을 나갔다.", shown(0, false, 100))
     }
 
+    @Test fun rapErasesPastAndKeepsEntireFutureVisible() {
+        val doc = TextProcessor.process("오늘은 날씨가 좋아서 산책을 나갔다.")
+        val sentence = doc.sentences.single()
+        val words = doc.tokens.flatMap { eyeReadingSlices(it, EyeReadingUnit.WORD) }
+        fun shown(step: Int, past: Int, keep: Boolean = false): String {
+            val range = eyeVisibleRange(sentence, words[step], words, keep, 3, past, true)
+            return sentence.text.substring(range.first, range.last + 1)
+        }
+        assertEquals("오늘은 날씨가 좋아서 산책을 나갔다.", shown(0, 0))
+        assertEquals("날씨가 좋아서 산책을 나갔다.", shown(1, 0))
+        assertEquals("좋아서 산책을 나갔다.", shown(2, 0))
+        assertEquals("오늘은 날씨가 좋아서 산책을 나갔다.", shown(2, 2))
+        assertEquals("오늘은 날씨가 좋아서 산책을 나갔다.", shown(2, 0, true))
+        assertEquals("나갔다.", shown(words.lastIndex, 0))
+    }
+
+    @Test fun lookbackAndLookaheadCombineWithinFixedWindow() {
+        val doc = TextProcessor.process("오늘은 날씨가 좋아서 산책을 나갔다.")
+        val sentence = doc.sentences.single()
+        val words = doc.tokens.flatMap { eyeReadingSlices(it, EyeReadingUnit.WORD) }
+        val range = eyeVisibleRange(sentence, words[2], words, false, 2, 1, false)
+        assertEquals("날씨가 좋아서 산책을", sentence.text.substring(range.first, range.last + 1))
+    }
+
     @Test fun previewRespectsCharacterUnitAndLastUnit() {
         val doc = TextProcessor.process("가나다 라마")
         val sentence = doc.sentences.single()
