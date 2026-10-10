@@ -7,6 +7,9 @@ enum class EyeReadingUnit(val label: String) { WORD("단어"), CHARACTER("글자
 
 const val EYE_RATE_MIN = 30
 const val EYE_RATE_MAX = 240
+const val EYE_PREVIEW_MIN = 1
+const val EYE_PREVIEW_MAX = 10
+const val EYE_PREVIEW_DEFAULT = 3
 
 data class EyeReadingSlice(val text: String, val start: Int, val endExclusive: Int)
 
@@ -26,10 +29,21 @@ fun eyeReadingDelay(token: RsvpToken, slice: EyeReadingSlice, settings: AppSetti
     return (base * maxOf(punctuation, length)).roundToLong()
 }
 
-// Use source offsets rather than spaces or recentered strings: the complete sentence
-// is laid out once, and only visibility changes as the cursor advances.
-fun eyeVisibleRange(sentence: SentenceUnit, slice: EyeReadingSlice, keepPrevious: Boolean): IntRange {
-    val start = if (keepPrevious) 0 else (slice.start - sentence.start).coerceAtLeast(0)
-    val end = (slice.endExclusive - sentence.start).coerceIn(start, sentence.text.length)
+// Preserve source offsets and layout while a preview window moves across units.
+fun eyeVisibleRange(
+    sentence: SentenceUnit,
+    slice: EyeReadingSlice,
+    sentenceSlices: List<EyeReadingSlice>,
+    keepPrevious: Boolean,
+    previewCount: Int
+): IntRange {
+    if (sentenceSlices.isEmpty()) return 0 until 0
+    val cursor = sentenceSlices.indexOfFirst { it.start == slice.start && it.endExclusive == slice.endExclusive }
+    if (cursor < 0) return 0 until 0
+    val lastVisible = (cursor + previewCount.coerceIn(EYE_PREVIEW_MIN, EYE_PREVIEW_MAX) - 1)
+        .coerceAtMost(sentenceSlices.lastIndex)
+    val firstVisible = if (keepPrevious) 0 else cursor
+    val start = (sentenceSlices[firstVisible].start - sentence.start).coerceIn(0, sentence.text.length)
+    val end = (sentenceSlices[lastVisible].endExclusive - sentence.start).coerceIn(start, sentence.text.length)
     return start until end
 }

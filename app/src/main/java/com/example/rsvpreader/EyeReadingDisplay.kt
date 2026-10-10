@@ -37,28 +37,32 @@ fun EyeReadingDisplay(
 ) {
     val density = LocalDensity.current
     val measurer = rememberTextMeasurer()
-    val color = if (settings.showFocusColor) settings.effectiveFocusColor else MaterialTheme.colorScheme.onSurface
+    val normalColor = MaterialTheme.colorScheme.onSurface
+    val focusColor = if (settings.showFocusColor) settings.effectiveFocusColor else normalColor
     val guideColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
     Column(modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
         Text(
             settings.eyeMode.label + " · " + settings.eyeUnit.label +
-                if (settings.eyeMode == EyeReadingMode.FIXED_POSITION) (if (settings.keepPrevious) " · 앞부분 유지" else " · 현재만 표시") else "",
+                if (settings.eyeMode == EyeReadingMode.FIXED_POSITION) {
+                    (if (settings.keepPrevious) " · 앞부분 유지" else " · 이동 창") +
+                        " · ${settings.eyePreviewCount}${settings.eyeUnit.label} 공개"
+                } else "",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().testTag("eye-stage")) {
             val widthPx = with(density) { maxWidth.roundToPx() }.coerceAtLeast(1)
             val heightPx = with(density) { maxHeight.roundToPx() }.coerceAtLeast(1)
-            val style = TextStyle(fontSize = settings.rsvpFontSp.sp, lineHeight = (settings.rsvpFontSp * 1.5f).sp, color = color, fontWeight = FontWeight.Normal)
+            val style = TextStyle(fontSize = settings.rsvpFontSp.sp, lineHeight = (settings.rsvpFontSp * 1.5f).sp, color = normalColor, fontWeight = FontWeight.Normal)
             if (settings.eyeMode == EyeReadingMode.ALTERNATING) {
                 val sideWidth = (widthPx * 0.46f).toInt().coerceAtLeast(1)
                 val result = remember(slice.text, style, sideWidth, heightPx) {
                     var font = settings.rsvpFontSp
-                    var layout = measurer.measure(AnnotatedString(slice.text), style, constraints = Constraints(maxWidth = sideWidth))
+                    var layout = measurer.measure(AnnotatedString(slice.text), style.copy(color = focusColor), constraints = Constraints(maxWidth = sideWidth))
                     // Keep the complete unit visible inside its side, including long URLs.
                     while (layout.size.height > heightPx && font > 10f) {
                         font = (font - 1f).coerceAtLeast(10f)
-                        layout = measurer.measure(AnnotatedString(slice.text), style.copy(fontSize = font.sp, lineHeight = (font * 1.2f).sp), constraints = Constraints(maxWidth = sideWidth))
+                        layout = measurer.measure(AnnotatedString(slice.text), style.copy(color = focusColor, fontSize = font.sp, lineHeight = (font * 1.2f).sp), constraints = Constraints(maxWidth = sideWidth))
                     }
                     layout
                 }
@@ -94,7 +98,7 @@ fun EyeReadingDisplay(
                         }
                     }
                 }
-                val range = eyeVisibleRange(sentence, slice, settings.keepPrevious)
+                val range = eyeVisibleRange(sentence, slice, sentenceSlices, settings.keepPrevious, settings.eyePreviewCount)
                 val activeStart = (slice.start - sentence.start).coerceIn(0, sentence.text.lastIndex)
                 val activeEnd = (slice.endExclusive - sentence.start - 1).coerceIn(activeStart, sentence.text.lastIndex)
                 val firstLine = layout.getLineForOffset(activeStart)
@@ -124,6 +128,13 @@ fun EyeReadingDisplay(
                             visiblePath.translate(Offset(0f, -pageTop))
                             clipRect {
                                 clipPath(visiblePath) { drawText(layout, topLeft = Offset(0f, -pageTop)) }
+                                if (settings.showFocusColor) {
+                                    val activePath = layout.getPathForRange(activeStart, activeEnd + 1)
+                                    activePath.translate(Offset(0f, -pageTop))
+                                    clipPath(activePath) {
+                                        drawText(layout, color = focusColor, topLeft = Offset(0f, -pageTop))
+                                    }
+                                }
                             }
                         }
                     }
@@ -159,7 +170,20 @@ fun EyeModeDialog(settings: AppSettings, onChange: (AppSettings) -> Unit, onDism
                         Text("앞부분 유지", Modifier.weight(1f))
                         Switch(settings.keepPrevious, { onChange(settings.copy(keepPrevious = it)) })
                     }
-                    Text("끄면 현재 항목만 남고 앞부분은 다시 빈칸이 됩니다.", style = MaterialTheme.typography.bodySmall)
+                    Text("켜면 읽은 부분이 남고, 끄면 지정한 개수만 이동하며 표시됩니다.", style = MaterialTheme.typography.bodySmall)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("동시 공개 ${settings.eyeUnit.label} 수", Modifier.weight(1f))
+                        TextButton(
+                            onClick = { onChange(settings.copy(eyePreviewCount = (settings.eyePreviewCount - 1).coerceAtLeast(EYE_PREVIEW_MIN))) },
+                            enabled = settings.eyePreviewCount > EYE_PREVIEW_MIN
+                        ) { Text("−") }
+                        Text("${settings.eyePreviewCount}")
+                        TextButton(
+                            onClick = { onChange(settings.copy(eyePreviewCount = (settings.eyePreviewCount + 1).coerceAtMost(EYE_PREVIEW_MAX))) },
+                            enabled = settings.eyePreviewCount < EYE_PREVIEW_MAX
+                        ) { Text("+") }
+                    }
+                    Text("첫 단계부터 설정한 개수를 보여주고, 현재 읽을 항목만 강조합니다.", style = MaterialTheme.typography.bodySmall)
                 }
                 Text("단어는 띄어쓰기·문장부호 기준, 글자는 결합 문자 기준으로 나눕니다. TTS 재생 중에는 음성이 가리키는 단어를 표시합니다.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 12.dp))
             }

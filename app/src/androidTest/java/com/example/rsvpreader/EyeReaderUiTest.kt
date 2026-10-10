@@ -57,12 +57,12 @@ class EyeReaderUiTest {
         rule.onNodeWithText("안구 이동 읽기").assertDoesNotExist()
         screenshot("fixed-first")
         rule.onNodeWithContentDescription("다음 토큰").performClick()
-        rule.onNodeWithContentDescription("안녕하세요 만나서").assertExists()
+        rule.onNodeWithContentDescription("안녕하세요 만나서 반갑습니다.").assertExists()
         screenshot("fixed-kept")
         rule.onNodeWithContentDescription("읽기 모드 선택").performTouchInput { longClick() }
         rule.onNode(isToggleable()).performClick()
         rule.onNodeWithText("적용").performClick()
-        rule.onNodeWithContentDescription("만나서").assertExists()
+        rule.onNodeWithContentDescription("만나서 반갑습니다.").assertExists()
         screenshot("fixed-current")
         rule.onNodeWithContentDescription("읽기 모드 선택").performTouchInput { longClick() }
         rule.onNodeWithText("좌우 교대", useUnmergedTree = true).performClick()
@@ -89,20 +89,21 @@ class EyeReaderUiTest {
         rule.onNodeWithContentDescription("다음 토큰").performClick()
         rule.waitForIdle()
         val second = rule.onNodeWithTag("eye-stage").captureToImage().asAndroidBitmap()
-        var colored = 0
-        var added = 0
+        var initialFocusPixels = 0
+        var nextFocusPixels = 0
+        var changedPixels = 0
         fun ink(pixel: Int): Boolean = android.graphics.Color.red(pixel) > 150 &&
             android.graphics.Color.green(pixel) in 20..150 && android.graphics.Color.blue(pixel) < 100
         for (y in 0 until first.height) for (x in 0 until first.width) {
             val before = first.getPixel(x, y)
             val after = second.getPixel(x, y)
-            if (ink(before)) {
-                colored++
-                org.junit.Assert.assertEquals("Previously revealed glyph shifted", before, after)
-            } else if (ink(after)) added++
+            if (ink(before)) initialFocusPixels++
+            if (ink(after)) nextFocusPixels++
+            if (before != after) changedPixels++
         }
-        org.junit.Assert.assertTrue("First word actually rendered", colored > 50)
-        org.junit.Assert.assertTrue("Second word fills its own position", added > 50)
+        org.junit.Assert.assertTrue("First current word must be highlighted", initialFocusPixels > 50)
+        org.junit.Assert.assertTrue("Next current word must be highlighted", nextFocusPixels > 50)
+        org.junit.Assert.assertTrue("Highlight must move to the next word", changedPixels > 50)
         screenshot("fixed-coordinate-check")
         rule.onNodeWithContentDescription("읽기 모드 선택").performTouchInput { longClick() }
         rule.onNodeWithText("좌우 교대", useUnmergedTree = true).performClick()
@@ -140,7 +141,7 @@ class EyeReaderUiTest {
         openReader()
         val button = rule.onNodeWithContentDescription("읽기 모드 선택")
         button.performClick()
-        rule.onNodeWithText("자리 채우기 · 단어 · 앞부분 유지").assertExists()
+        rule.onNodeWithText("자리 채우기 · 단어 · 앞부분 유지 · 3단어 공개").assertExists()
         rule.onNodeWithText("안구 이동 읽기").assertDoesNotExist()
         button.performTouchInput { longClick() }
         rule.onNodeWithText("안구 이동 읽기").assertExists()
@@ -148,14 +149,14 @@ class EyeReaderUiTest {
         rule.onNodeWithText("글자 단위", useUnmergedTree = true).performClick()
         rule.onNode(isToggleable()).performClick()
         rule.onNodeWithText("적용").performClick()
-        rule.onNodeWithText("자리 채우기 · 글자 · 현재만 표시").assertExists()
+        rule.onNodeWithText("자리 채우기 · 글자 · 이동 창 · 3글자 공개").assertExists()
         rule.onNodeWithContentDescription("다음 토큰").performClick()
         rule.onNodeWithContentDescription("녕").assertExists()
         button.performClick()
         rule.onNodeWithText("좌우 교대 · 글자").assertExists()
         rule.onNodeWithContentDescription("녕").assertExists()
         button.performClick()
-        rule.onNodeWithText("자리 채우기 · 글자 · 현재만 표시").assertExists()
+        rule.onNodeWithText("자리 채우기 · 글자 · 이동 창 · 3글자 공개").assertExists()
         rule.onNodeWithContentDescription("녕").assertExists()
         rule.onNodeWithText("안구 이동 읽기").assertDoesNotExist()
         screenshot("fixed-character-tap-switch")
@@ -171,7 +172,7 @@ class EyeReaderUiTest {
             MaterialTheme {
                 Surface(Modifier.fillMaxSize()) {
                     EyeReadingDisplay(doc.sentences.single(), slices[active], slices, true, revealed,
-                        AppSettings(eyeMode = EyeReadingMode.FIXED_POSITION, eyeUnit = unit, keepPrevious = false),
+                        AppSettings(eyeMode = EyeReadingMode.FIXED_POSITION, eyeUnit = unit, keepPrevious = false, eyePreviewCount = 1),
                         Modifier.fillMaxWidth().height(300.dp))
                 }
             }
@@ -223,7 +224,7 @@ class EyeReaderUiTest {
         org.junit.Assert.assertEquals("com.example.eyemovementreader", context.packageName)
         val store = AppSettingsStore(context)
         val settings = AppSettings(eyeMode = EyeReadingMode.FIXED_POSITION, eyeUnit = EyeReadingUnit.CHARACTER,
-            keepPrevious = false, wordRate = 90, characterRate = 110)
+            keepPrevious = false, eyePreviewCount = 4, wordRate = 90, characterRate = 110)
         store.save(settings)
         org.junit.Assert.assertEquals(settings, store.load())
     }

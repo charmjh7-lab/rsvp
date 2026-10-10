@@ -9,6 +9,7 @@ class AppSettingsStore(context: Context) {
         eyeMode = runCatching { EyeReadingMode.valueOf(prefs.getString("eyeMode", null) ?: "ALTERNATING") }.getOrDefault(EyeReadingMode.ALTERNATING),
         eyeUnit = runCatching { EyeReadingUnit.valueOf(prefs.getString("eyeUnit", null) ?: "WORD") }.getOrDefault(EyeReadingUnit.WORD),
         keepPrevious = prefs.getBoolean("keepPrevious", true),
+        eyePreviewCount = prefs.getInt("eyePreviewCount", EYE_PREVIEW_DEFAULT).coerceIn(EYE_PREVIEW_MIN, EYE_PREVIEW_MAX),
         wordRate = prefs.getInt("wordRate", 100).coerceIn(EYE_RATE_MIN, EYE_RATE_MAX),
         characterRate = prefs.getInt("characterRate", 120).coerceIn(EYE_RATE_MIN, EYE_RATE_MAX),
         wpm = prefs.getInt("wpm", WPM_DEFAULT).coerceIn(WPM_MIN, WPM_MAX),
@@ -36,6 +37,7 @@ class AppSettingsStore(context: Context) {
             .putString("eyeMode", settings.eyeMode.name)
             .putString("eyeUnit", settings.eyeUnit.name)
             .putBoolean("keepPrevious", settings.keepPrevious)
+            .putInt("eyePreviewCount", settings.eyePreviewCount.coerceIn(EYE_PREVIEW_MIN, EYE_PREVIEW_MAX))
             .putInt("wordRate", settings.wordRate)
             .putInt("characterRate", settings.characterRate)
             .putInt("wpm", settings.wpm.coerceIn(WPM_MIN, WPM_MAX))
