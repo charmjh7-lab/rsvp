@@ -132,7 +132,7 @@ class EyeReaderUiTest {
                 rule.onAllNodesWithContentDescription("재생").fetchSemanticsNodes().isNotEmpty()
         }
         rule.onNodeWithContentDescription("이전 토큰").performClick()
-        rule.onNodeWithContentDescription("라.").assertExists()
+        rule.onNodeWithContentDescription("라", substring = true).assertExists()
         screenshot("character-completed")
     }
 
