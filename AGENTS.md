@@ -1,3 +1,5 @@
+> **최상위 작업 범위·기존 UI 보존 규칙:** [docs/CHANGE_SCOPE_POLICY.md](docs/CHANGE_SCOPE_POLICY.md)를 먼저 확인한다. 명시적 사용자 요청과 승인된 구체적 디자인은 일반 UX·시각적 위계 지침보다 우선한다. 요청하지 않은 배치·크기·여백·색·조작 흐름을 바꾸지 않는다. 모델의 미승인 제안을 제품 문서·테스트의 확정 요구사항으로 만들지 않는다. 범위 밖 개선은 미적용 제안으로 보고한다.
+
 # Eye Reader 개발 에이전트 작업 규칙
 
 작업 전 이 브랜치의 `README.md`, `docs/PRODUCT_PRINCIPLES.md`, 실제 읽기 위치·표시 모드·서명 구현과 GitHub Actions 트리거를 확인한다. `main`의 RSVP Reader와 독립된 앱으로 취급한다.
