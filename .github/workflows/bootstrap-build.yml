@@ -2,7 +2,10 @@ name: Eye Reader Debug APK
 
 on:
   push:
-    branches: [ main, development/eye-movement ]
+    branches: [ development/eye-movement ]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
   workflow_dispatch:
 
 permissions:
@@ -19,6 +22,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Cancel superseded Eye Reader builds
+        if: github.event_name == 'push'
         uses: actions/github-script@v7
         with:
           script: |
@@ -59,15 +63,18 @@ jobs:
         run: gradle :app:testDebugUnitTest --stacktrace
 
       - name: Assemble debug APK
+        if: github.event_name == 'workflow_dispatch'
         run: gradle :app:assembleDebug --stacktrace
 
       - name: Upload debug APK
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: Eye-Reader-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
 
       - name: Keep latest Eye Reader artifacts
+        if: github.event_name == 'workflow_dispatch'
         if: success()
         uses: actions/github-script@v7
         with:
