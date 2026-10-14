@@ -1,6 +1,9 @@
 name: Keep latest Actions artifacts
 
 on:
+  workflow_run:
+    workflows: [ "Android Debug APK" ]
+    types: [ completed ]
   workflow_dispatch:
 
 permissions:
@@ -9,13 +12,14 @@ permissions:
 
 jobs:
   prune:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
       - name: Remove artifacts from older runs
         uses: actions/github-script@v7
         with:
           script: |
-            const currentRunId = null;
+            const currentRunId = context.payload.workflow_run?.id ?? null;
             const artifacts = await github.paginate(
               github.rest.actions.listArtifactsForRepo,
               { owner: context.repo.owner, repo: context.repo.repo, per_page: 100 }
