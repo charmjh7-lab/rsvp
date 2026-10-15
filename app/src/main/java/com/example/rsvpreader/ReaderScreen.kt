@@ -942,7 +942,11 @@ private fun FocusToken(
 ) {
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
-    val focusRange = remember(text) { TextProcessor.focusGraphemeRange(text) }
+    val focus = remember(text, settings.focusBeforeCenter) {
+        rsvpFocus(text, settings.focusBeforeCenter)
+    }
+    val displayText = focus.display
+    val focusRange = focus.anchorRange
     val lexicalGraphemeCount = remember(text) {
         TextProcessor.graphemeRanges(text).count { range ->
             text.substring(range.first, range.last + 1).any(Char::isLetter)
@@ -950,14 +954,15 @@ private fun FocusToken(
     }
     val baseColor = MaterialTheme.colorScheme.onSurface
     val neighborColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
-    val focusColor = if (settings.showFocusColor) settings.effectiveFocusColor else baseColor
-    val annotated = remember(text, focusRange, focusColor) {
-        AnnotatedString.Builder(text).apply {
-            if (focusRange != null) {
+    val focusColor = settings.effectiveFocusColor
+    val annotated = remember(focus, focusColor, settings.showFocusColor) {
+        AnnotatedString.Builder(displayText).apply {
+            val highlightRange = focus.highlightRange
+            if (settings.showFocusColor && highlightRange != null) {
                 addStyle(
                     SpanStyle(color = focusColor, fontWeight = FontWeight.Bold),
-                    focusRange.first,
-                    focusRange.last + 1
+                    highlightRange.first,
+                    highlightRange.last + 1
                 )
             }
         }.toAnnotatedString()
@@ -984,9 +989,9 @@ private fun FocusToken(
             ).size.width / 10f
         }.coerceAtLeast(1f)
 
-        val requestedFocusCenter = if (focusRange != null && text.isNotEmpty()) {
+        val requestedFocusCenter = if (focusRange != null && displayText.isNotEmpty()) {
             val first = requestedResult.getBoundingBox(focusRange.first)
-            val last = requestedResult.getBoundingBox(focusRange.last.coerceAtMost(text.lastIndex))
+            val last = requestedResult.getBoundingBox(focusRange.last.coerceAtMost(displayText.lastIndex))
             (first.left + last.right) / 2f
         } else {
             requestedResult.size.width / 2f
@@ -1042,9 +1047,9 @@ private fun FocusToken(
         }
 
         Canvas(Modifier.fillMaxSize()) {
-            val focusCenter = if (focusRange != null && text.isNotEmpty()) {
+            val focusCenter = if (focusRange != null && displayText.isNotEmpty()) {
                 val first = currentResult.getBoundingBox(focusRange.first)
-                val last = currentResult.getBoundingBox(focusRange.last.coerceAtMost(text.lastIndex))
+                val last = currentResult.getBoundingBox(focusRange.last.coerceAtMost(displayText.lastIndex))
                 (first.left + last.right) / 2f
             } else {
                 currentResult.size.width / 2f

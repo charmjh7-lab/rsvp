@@ -103,7 +103,8 @@ data class AppSettings(
     val ttsEnginePackage: String? = null,
     val ttsVoiceName: String? = null,
     val lastTtsMode: Boolean = false,
-    val rsvpAtTop: Boolean = false
+    val rsvpAtTop: Boolean = false,
+    val focusBeforeCenter: Boolean = false
 ) {
     val focusColor: Color get() = Color(focusColorArgb.toInt())
     val effectiveFocusColor: Color get() = if (darkMode) adaptFocusColorForDark(focusColor) else focusColor

@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -41,15 +41,36 @@ jobs:
           gradle-version: '8.11.1'
 
       - name: Run JVM unit tests
+        if: contains(github.event.head_commit.message, '[publish-apk]') == false
         run: gradle :app:testDebugUnitTest --stacktrace
 
+      - name: Check focus rules for release
+        if: contains(github.event.head_commit.message, '[publish-apk]')
+        run: gradle :app:testDebugUnitTest --tests com.example.rsvpreader.RsvpFocusTest --stacktrace
+
       - name: Assemble debug APK
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[publish-apk]')
         run: gradle :app:assembleDebug --stacktrace
 
       - name: Upload debug APK
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[publish-apk]')
         uses: actions/upload-artifact@v4
         with:
           name: RSVP-Reader-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Publish APK to GitHub Release
+        if: contains(github.event.head_commit.message, '[publish-apk]')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          APK_VERSION=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts)
+          TAG_NAME="v$APK_VERSION"
+          APK_NAME="RSVP-Reader-$APK_VERSION.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$APK_NAME"
+          gh release create "$TAG_NAME" "$APK_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "RSVP Reader $APK_VERSION" \
+            --notes "강조색을 끄면 집중 글자의 굵기 강조도 해제됩니다. 설정에서 중앙 바로 앞 글자 강조 모드를 선택할 수 있습니다. 기존 앱과 같은 업데이트 서명을 사용합니다."

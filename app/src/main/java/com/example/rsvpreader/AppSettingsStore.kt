@@ -23,7 +23,8 @@ class AppSettingsStore(context: Context) {
         ttsEnginePackage = prefs.getString("ttsEnginePackage", null),
         ttsVoiceName = prefs.getString("ttsVoiceName", null),
         lastTtsMode = prefs.getBoolean("lastTtsMode", false),
-        rsvpAtTop = prefs.getBoolean("rsvpAtTop", false)
+        rsvpAtTop = prefs.getBoolean("rsvpAtTop", false),
+        focusBeforeCenter = prefs.getBoolean("focusBeforeCenter", false)
     )
 
     fun save(settings: AppSettings) {
@@ -40,6 +41,7 @@ class AppSettingsStore(context: Context) {
             .putFloat("ttsRate", settings.ttsRate.coerceIn(0.5f, 2.0f))
             .putBoolean("lastTtsMode", settings.lastTtsMode)
             .putBoolean("rsvpAtTop", settings.rsvpAtTop)
+            .putBoolean("focusBeforeCenter", settings.focusBeforeCenter)
             .apply {
                 if (settings.ttsEnginePackage == null) remove("ttsEnginePackage")
                 else putString("ttsEnginePackage", settings.ttsEnginePackage)

@@ -92,6 +92,15 @@ fun SettingsScreen(settings: AppSettings, onChange: (AppSettings) -> Unit, onBac
         ) {
             SectionTitle("화면")
             SettingSwitch("집중 글자 색상 표시", settings.showFocusColor) { onChange(settings.copy(showFocusColor = it)) }
+            SettingSwitch("중앙 바로 앞 글자 강조", settings.focusBeforeCenter) {
+                onChange(settings.copy(focusBeforeCenter = it))
+            }
+            Text(
+                "중앙에 위치를 고정하고 바로 앞 글자를 강조합니다. 두 글자는 둘째 글자, 한 글자는 뒤의 빈칸에 고정합니다.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(12.dp))
             Text("집중색", style = MaterialTheme.typography.labelLarge)
             Spacer(Modifier.height(10.dp))
             val colors = listOf(0xFFE65100, 0xFF1565C0, 0xFF2E7D32, 0xFF7B1FA2, 0xFFC62828, 0xFF00838F)
